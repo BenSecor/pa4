@@ -155,9 +155,9 @@ def main():
         exit(1) 
       elif not i[1] in all_classes:
         print(f"ERROR: {i.loc}: Type-Check: inheriting from undefined class {i.str}")
-        exit(1) 
+        exit(1)
 
-  # Example of another check. Let's look for duplicate classes. 
+   # Check for duplicate classes
   for i in range(len(ast)):
     c_i = ast[i]
     for j in range(i+1, len(ast)): 
@@ -165,6 +165,117 @@ def main():
       if c_i.Name.str == c_j.Name.str:
         print(f"ERROR: {c_j.Name.loc}: Type-Check: class {c_i.Name.str} redefined") 
         exit(1) 
+
+  # recursive method for finding if their are cycles in the class inheritance 
+  def has_cycle(graph, start, visited, rec_stack):
+    visited[start] = True
+    rec_stack[start] = True
+
+    for neighbor in graph[start]:
+      if not visited[neighbor]:
+        if has_cycle(graph, neighbor, visited, rec_stack):
+          return True
+      elif rec_stack[neighbor]:
+        return True
+
+    rec_stack[start] = False
+    return False
+
+  class_graph = {cls.Name.str: set() for cls in ast}
+  for cls in ast:
+    if cls.Inherits:
+      class_graph[cls.Inherits.str].add(cls.Name.str)
+
+  visited = {cls: False for cls in class_graph}
+  rec_stack = {cls: False for cls in class_graph}
+
+#look for cycle
+  for cls in class_graph:
+    if not visited[cls]:
+      if has_cycle(class_graph, cls, visited, rec_stack):
+        print("ERROR: CLASS Inheritance contains cycle: ") 
+        exit(1) 
+  
+  for cls in ast:
+    attributes = set()
+    methods = set()
+
+    for feature in cls.Features:
+      if isinstance(feature, Attribute):
+        if feature.Name.str in attributes:
+          print(f"ERROR: {feature.Name.loc}: Type-Check: Attribute {feature.Name.str} is redefined in class {cls.Name.str}")
+          exit(1)
+        else:
+          attributes.add(feature.Name.str)
+      elif isinstance(feature, Method):
+        if feature.Name.str in methods:
+          print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} is redefined in class {cls.Name.str}")
+          exit(1)
+        else:
+          methods.add(feature.Name.str)
+
+  # Check for a child class that redefines a parent method but changes the parameters
+  def check_method_redefinition():
+    for cls in ast:
+      if cls.Inherits:
+        parent_class = None
+        for c in ast:
+          if c.Name.str == cls.Inherits.str:
+            parent_class = c
+            break
+
+        if not parent_class:
+          print(f"ERROR: {cls.Inherits.loc}: Type-Check: Undefined parent class {cls.Inherits.str}")
+          exit(1)
+
+        for feature in cls.Features:
+          if isinstance(feature, Method):
+            for parent_feature in parent_class.Features:
+              if isinstance(parent_feature, Method) and feature.Name.str == parent_feature.Name.str:
+                if feature.Formals != parent_feature.Formals:
+                  print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different parameters")
+                  exit(1)
+
+  check_method_redefinition()
+
+  # Check for a missing method main in class Main
+  def check_main_method():
+    main_class = None
+    for cls in ast:
+      if cls.Name.str == "Main":
+        main_class = cls
+        break
+
+    if not main_class:
+      print("ERROR: Type-Check: Class Main is missing")
+      exit(1)
+
+    main_method = False
+    for feature in main_class.Features:
+      if isinstance(feature, Method) and feature.Name.str == "main":
+        main_method = True
+        break
+
+    if not main_method:
+      print("ERROR: Type-Check: Class Main is missing method 'main'")
+      exit(1)
+
+  check_main_method()
+
+  # Check for self and SELF_TYPE mistakes in classes and methods.
+  def check_self_and_self_type():
+    for cls in ast:
+      for feature in cls.Features:
+        if isinstance(feature, Method):
+          if any(formal[0].str == "self" for formal in feature.Formals):
+            print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines 'self' parameter")
+            exit(1)
+
+          if "SELF_TYPE" in [formal[1].str for formal in feature.Formals]:
+            print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
+            exit(1)
+
+  check_self_and_self_type()
 
 main() 
 
