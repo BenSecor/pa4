@@ -137,22 +137,18 @@ def main():
     result.reverse()  # Reverse the result to get the correct order
     return result
   
-  user_classes = topological_sort(ast)
-
   base_classes = [ "Int", "String", "Bool", "IO", "Object" ]
-  base_classes.reverse()  # Reverse the base classes to get the correct order
-  all_classes = (base_classes + user_classes)
-
-  print(f"DEBUG: all_classes = {all_classes}") 
-  print(f"DEBUG: ast = {ast}") 
+  all_classes = ([c.Name.str for c in ast ] + base_classes)
+  # print(f"DEBUG: all_classes = {all_classes}") 
+  # print(f"DEBUG: ast = {ast}") 
 
   # Look for inheritance from Int, String and undeclared classes 
   for c in ast:
     if c.Inherits != None: 
       i = c.Inherits 
-      if i.str in ["Int", "String"]:
+      if i.str in [ "Int", "String", "Bool", "IO", "Object" ]:
         print(f"ERROR: {i.loc}: Type-Check: inheriting from forbidden class {i.str}")
-        exit(1) 
+        exit(1)
       elif not i[1] in all_classes:
         print(f"ERROR: {i.loc}: Type-Check: inheriting from undefined class {i.str}")
         exit(1)
@@ -193,9 +189,13 @@ def main():
   for cls in class_graph:
     if not visited[cls]:
       if has_cycle(class_graph, cls, visited, rec_stack):
-        print("ERROR: CLASS Inheritance contains cycle: ") 
+        print(f"ERROR: 0: Type-Check: inheritance cycle: {cls}") 
         exit(1) 
   
+  user_classes = topological_sort(ast)
+  base_classes.reverse()  # Reverse the base classes to get the correct order
+  all_classes = (base_classes + user_classes)
+
   for cls in ast:
     attributes = set()
     methods = set()
@@ -242,23 +242,23 @@ def main():
   def check_main_method():
     main_class = None
     for cls in ast:
-      if cls.Name.str == "Main":
-        main_class = cls
-        break
+        if cls.Name.str == "Main":
+            main_class = cls
+            break
 
     if not main_class:
-      print("ERROR: Type-Check: Class Main is missing")
-      exit(1)
+        print("ERROR: Type-Check: Class Main is missing")
+        exit(1)
 
-    main_method = False
+    main_method_found = False
     for feature in main_class.Features:
-      if isinstance(feature, Method) and feature.Name.str == "main":
-        main_method = True
-        break
+        if feature.Name.str == "main":
+            main_method_found = True
+            break
 
-    if not main_method:
-      print("ERROR: Type-Check: Class Main is missing method 'main'")
-      exit(1)
+    if not main_method_found:
+        print("ERROR: Type-Check: Class Main is missing method 'main'")
+        exit(1)
 
   check_main_method()
 
@@ -275,7 +275,104 @@ def main():
             print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
             exit(1)
 
+    # Check for self and SELF_TYPE mistakes in classes and methods.
+  def check_self_and_self_type():
+      for cls in ast:
+          for feature in cls.Features:
+              if isinstance(feature, Method):
+                  if any(formal[0].str == "self" for formal in feature.Formals):
+                      print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines 'self' parameter")
+                      exit(1)
+
+                  if "SELF_TYPE" in [formal[1].str for formal in feature.Formals]:
+                      print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
+                      exit(1)
+
+              elif isinstance(feature, Attribute):
+                  if feature.Name.str == "self":
+                      print(f"ERROR: {cls.Name.loc}: Type-Check: Attribute named 'self' in class {cls.Name.str}")
+                      exit(1)
+
+  # Check for duplicate attribute definitions in the same class.
+  def check_duplicate_attributes():
+      for cls in ast:
+          attributes = set()
+          for feature in cls.Features:
+              if isinstance(feature, Attribute):
+                  if feature.Name.str in attributes:
+                      print(f"ERROR: {feature.Name.loc}: Type-Check: Attribute {feature.Name.str} is redefined in class {cls.Name.str}") 
+                      exit(1) 
+                  else:
+                      attributes.add(feature.Name.str)
+
+  # Check for inheriting an attribute with the same name.
+  def check_inherit_duplicate_attributes():
+      for cls in ast:
+          if cls.Inherits:
+              parent_class = None
+              for c in ast:
+                  if c.Name.str == cls.Inherits.str:
+                      parent_class = c
+                      break
+
+              if not parent_class:
+                  print(f"ERROR: {cls.Inherits.loc}: Type-Check: Undefined parent class {cls.Inherits.str}")
+                  exit(1)
+
+              for feature in parent_class.Features:
+                  if isinstance(feature, Attribute):
+                      for cls_feature in cls.Features:
+                          if isinstance(cls_feature, Attribute) and cls_feature.Name.str == feature.Name.str:
+                              print(f"ERROR: {cls_feature.Name.loc}: Type-Check: Attribute {cls_feature.Name.str} is inherited with the same name")
+                              exit(1)
+
+  # Check for redefining methods with different parameters.
+  def check_method_parameter_redefinition():
+      for cls in ast:
+          if cls.Inherits:
+              parent_class = None
+              for c in ast:
+                  if c.Name.str == cls.Inherits.str:
+                      parent_class = c
+                      break
+
+              if not parent_class:
+                  print(f"ERROR: {cls.Inherits.loc}: Type-Check: Undefined parent class {cls.Inherits.str}")
+                  exit(1)
+
+              for feature in cls.Features:
+                  if isinstance(feature, Method):
+                      for parent_feature in parent_class.Features:
+                          if isinstance(parent_feature, Method) and feature.Name.str == parent_feature.Name.str:
+                              if feature.Formals != parent_feature.Formals:
+                                  print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different parameters")
+                                  exit(1)
+
+  # Check for undefined attribute types.
+  def check_undefined_attribute_types():
+      for cls in ast:
+          for feature in cls.Features:
+              if isinstance(feature, Attribute) and feature.Type.str not in all_classes:
+                  print(f"ERROR: {feature.Type.loc}: Type-Check: Undefined type {feature.Type.str} for attribute {feature.Name.str} in class {cls.Name.str}")
+                  exit(1)
+
+  # Check for undefined parameter types in method definitions.
+  def check_undefined_parameter_types():
+      for cls in ast:
+          for feature in cls.Features:
+              if isinstance(feature, Method):
+                  for formal in feature.Formals:
+                      if formal[1].str not in all_classes:
+                          print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
+                          exit(1)
+
+  # Add checks for negative test cases
   check_self_and_self_type()
+  check_duplicate_attributes()
+  check_inherit_duplicate_attributes()
+  check_method_parameter_redefinition()
+  check_undefined_attribute_types()
+  check_undefined_parameter_types()
 
   def int_initializer_str(initializer):
     output_str = ""
@@ -334,12 +431,13 @@ def main():
           implementation_map += str(len(method.Formals)) + "\n"
           for formal in method.Formals:
               implementation_map += formal[0].str + "\n"
-          if cls != class_obj.Inherits.str:
-              implementation_map += cls + "\n"
-          else:
+          if class_obj.Inherits == "None":
               implementation_map += "\n"  # No parent class if not overridden
-          implementation_map += method.Body[0] + "\n"  # Line number
-          implementation_map += method.ReturnType.str + "\n"  # Type
+              implementation_map += method.Body[0] + "\n"  # Line number
+              implementation_map += method.ReturnType.str + "\n"  # Type
+          else:
+              implementation_map += cls + "\n"
+        
 
   # Parent Map
   parent_map = "parent_map\n"
