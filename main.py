@@ -265,34 +265,21 @@ def main():
   # Check for self and SELF_TYPE mistakes in classes and methods.
   def check_self_and_self_type():
     for cls in ast:
-      for feature in cls.Features:
-        if isinstance(feature, Method):
-          if any(formal[0].str == "self" for formal in feature.Formals):
-            print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines 'self' parameter")
-            exit(1)
+        for feature in cls.Features:
+            if isinstance(feature, Method):
+                if "SELF_TYPE" in [formal[1].str for formal in feature.Formals]:
+                    print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
+                    exit(1)
 
-          if "SELF_TYPE" in [formal[1].str for formal in feature.Formals]:
-            print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
-            exit(1)
+                for expr in feature.Body:
+                    if isinstance(expr, ID) and expr.str == "self" and feature.ReturnType.str != cls.Name.str:
+                        print(f"ERROR: {feature.ReturnType.loc}: Type-Check: 'SELF_TYPE' can only be used as return type when referring to the type of 'self'")
+                        exit(1)
 
-    # Check for self and SELF_TYPE mistakes in classes and methods.
-  def check_self_and_self_type():
-      for cls in ast:
-          for feature in cls.Features:
-              if isinstance(feature, Method):
-                  if any(formal[0].str == "self" for formal in feature.Formals):
-                      print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines 'self' parameter")
-                      exit(1)
-
-                  if "SELF_TYPE" in [formal[1].str for formal in feature.Formals]:
-                      print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
-                      exit(1)
-
-              elif isinstance(feature, Attribute):
-                  if feature.Name.str == "self":
-                      print(f"ERROR: {cls.Name.loc}: Type-Check: Attribute named 'self' in class {cls.Name.str}")
-                      exit(1)
-
+            elif isinstance(feature, Attribute):
+                if feature.Type.str == "SELF_TYPE" and feature.Name.str != "self":
+                    print(f"ERROR: {feature.Type.loc}: Type-Check: Attribute {feature.Name.str} in class {cls.Name.str} cannot have 'SELF_TYPE' as type")
+                    exit(1)
   # Check for duplicate attribute definitions in the same class.
   def check_duplicate_attributes():
       for cls in ast:
@@ -374,13 +361,27 @@ def main():
   check_undefined_attribute_types()
   check_undefined_parameter_types()
 
-  def int_initializer_str(initializer):
+
+  #### ALL TYPE CHECKING HAS PASSED####3
+  def print_int_initializer_str(initializer):
     output_str = ""
     # take the first element of the initializer tuple
     output_str += f"{initializer[0]}\n"
     output_str += "Int\ninteger\n"
     output_str += f"{initializer[1].Integer}"
     return output_str
+  
+  def print_attributes_str(class_obj):
+      output_string = ""
+      attr_count = 0 
+      for attr in class_obj.Features:
+        if isinstance(attr, Attribute):
+            attr_count+=1
+            if attr.Initializer:
+               output_string += f"initializer\n{attr.Name.str}\n{attr.Type.str}\n{print_int_initializer_str(attr.Initializer)}"
+            else:
+               output_string += f"no_initializer\n{attr.Name.str}\n{attr.Type.str}\n"
+      return str(attr_count)+"\n"+output_string
 
 # Class Map
   class_map = "class_map\n"
@@ -404,10 +405,8 @@ def main():
           # print(f"Class {cls} not found in the AST")
           class_map += "0\n"
           continue
-      attributes = [f"{attr.Name.str}\n{attr.Type.str}\n{int_initializer_str(attr.Initializer)}" for attr in class_obj.Features if isinstance(attr, Attribute)]
-      class_map += str(len(attributes)) + "\n"
-      for attr in attributes:
-          class_map += "initializer\n" + attr + "\n"
+      class_map += print_attributes_str(class_obj)
+      
   
   print (f"DEBUG: class_map = {class_map}")
   # Implementation Map
