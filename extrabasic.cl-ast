@@ -1,4 +1,4 @@
-2
+1
 1
 Main
 no_inherits
@@ -28,14 +28,3 @@ Object
 4
 integer
 3
-7
-Child
-inherits
-7
-Main
-1
-attribute_no_init
-8
-z
-8
-Object

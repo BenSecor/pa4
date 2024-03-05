@@ -277,5 +277,100 @@ def main():
 
   check_self_and_self_type()
 
+  def int_initializer_str(initializer):
+    output_str = ""
+    # take the first element of the initializer tuple
+    output_str += f"{initializer[0]}\n"
+    output_str += "Int\ninteger\n"
+    output_str += f"{initializer[1].Integer}"
+    return output_str
+
+# Class Map
+  class_map = "class_map\n"
+  # sort classes alphabetically
+  sorted_classes = sorted(all_classes)
+  class_map += str(len(sorted_classes)) + "\n"
+  print(f"DEBUG: class_map = {class_map}")
+  print(f"DEBUG: sorted_classes = {sorted_classes}")
+  for cls in sorted_classes:
+      class_map += cls + "\n"
+      # print (f"DEBUG: cls = {cls}")
+      # print (f"DEBUG: ast = {ast}")
+      # Find the class object in ast
+      class_obj = None
+      for c in ast:
+          if c.Name.str == cls:
+              class_obj = c
+              break
+      # If class_obj is not found, skip this class
+      if class_obj is None:
+          # print(f"Class {cls} not found in the AST")
+          class_map += "0\n"
+          continue
+      attributes = [f"{attr.Name.str}\n{attr.Type.str}\n{int_initializer_str(attr.Initializer)}" for attr in class_obj.Features if isinstance(attr, Attribute)]
+      class_map += str(len(attributes)) + "\n"
+      for attr in attributes:
+          class_map += "initializer\n" + attr + "\n"
+  
+  print (f"DEBUG: class_map = {class_map}")
+  # Implementation Map
+  implementation_map = "implementation_map\n"
+  implementation_map += str(len(sorted_classes)) + "\n"
+  for cls in sorted_classes:
+      class_obj = None
+      for c in ast:
+          if c.Name.str == cls:
+              class_obj = c
+              break
+
+      if class_obj is None:
+          print(f"Class {cls} not found in the AST")
+          continue  # Skip processing this class
+      implementation_map += cls + "\n"
+      methods = [method for method in class_obj.Features if isinstance(method, Method)]
+      implementation_map += str(len(methods)) + "\n"
+      for method in methods:
+          implementation_map += method.Name.str + "\n"
+          implementation_map += str(len(method.Formals)) + "\n"
+          for formal in method.Formals:
+              implementation_map += formal[0].str + "\n"
+          if cls != class_obj.Inherits.str:
+              implementation_map += cls + "\n"
+          else:
+              implementation_map += "\n"  # No parent class if not overridden
+          implementation_map += method.Body[0] + "\n"  # Line number
+          implementation_map += method.ReturnType.str + "\n"  # Type
+
+  # Parent Map
+  parent_map = "parent_map\n"
+  parent_map += str(len(sorted_classes) - 1) + "\n"
+  for cls in sorted_classes:
+      class_obj = next(c for c in ast if c.Name.str == cls)
+      if class_obj.Inherits:
+          parent_map += cls + "\n" + class_obj.Inherits.str + "\n"
+
+  # Annotated AST
+  annotated_ast = ""
+  for cls in ast:
+      annotated_ast += f"{cls.Name.loc}\n{cls.Name.str}\n"
+      for feature in cls.Features:
+          if isinstance(feature, Method):
+              annotated_ast += f"{feature.Name.loc}\n{feature.Name.str}\n"
+              annotated_ast += f"{len(feature.Formals)}\n"
+              for formal in feature.Formals:
+                  annotated_ast += f"{formal[0].loc}\n{formal[0].str}\n"
+              annotated_ast += f"{cls.Name.str}\n" if cls.Name.str != cls.Inherits.str else "\n"
+              annotated_ast += f"{feature.Body[0]}\n{feature.ReturnType.str}\n"
+          elif isinstance(feature, Attribute):
+              annotated_ast += f"{feature.Name.loc}\n{feature.Name.str}\n{feature.Type.str}\n"
+              if feature.Initializer:
+                  annotated_ast += f"{feature.Initializer[0]}\n{feature.Initializer[1].str}\n"
+      annotated_ast += "\n"  # Empty line to separate class definitions
+
+  # Write to .cl-type file
+  with open(fname[:-4] + ".cl-type", "w") as output_file:
+      output_file.write(class_map + implementation_map + parent_map + annotated_ast)
+
+
 main() 
 
