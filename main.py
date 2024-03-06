@@ -257,8 +257,8 @@ def main():
   IO = CoolClass(ID("0", "IO"), ID("0", "Object"), [
       Method(ID("0", "in_int"), [], ID("0", "Int"), []),
       Method(ID("0", "in_string"), [], ID("0", "String"), []),
-      Method(ID("0", "out_int"), [ID("0", "x")], ID("0", "SELF_TYPE"), []),
-      Method(ID("0", "out_string"), [ID("0", "x")], ID("0", "SELF_TYPE"), [])
+      Method(ID("0", "out_int"), [(ID("0", "x"),ID("0", "Int"))], ID("0", "SELF_TYPE"), []),
+      Method(ID("0", "out_string"), [(ID("0", "x"),ID("0", "String"))], ID("0", "SELF_TYPE"), [])
   ])
 
   Object = CoolClass(ID("0", "Object"), None, [
@@ -266,8 +266,6 @@ def main():
       Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), []),
       Method(ID("0", "type_name"), [], ID("0", "String"), [])
   ])
-
-
   # Add base classes to ast
   ast.extend([IO, Object])
 
@@ -294,9 +292,9 @@ def main():
     result.reverse()  # Reverse the result to get the correct order
     return result
   
-  base_classes = [ "Int", "String", "Bool", "IO", "Object" ]
+  base_classes = [ "Int", "String", "Bool"]
   all_classes = ([c.Name.str for c in ast ] + base_classes)
-  print(f"DEBUG: all_classes = {all_classes}") 
+  #print(f"DEBUG: all_classes = {all_classes}") 
   # print(f"DEBUG: ast = {ast}") 
 
   # Look for inheritance from Int, String and undeclared classes 
@@ -430,23 +428,23 @@ def main():
   check_main_method()
 
   # Check for self and SELF_TYPE mistakes in classes and methods.
-  def check_self_and_self_type():
-    for cls in ast:
-        for feature in cls.Features:
-            if isinstance(feature, Method):
-                if "SELF_TYPE" in [formal[1] for formal in feature.Formals]:
-                    print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
-                    exit(1)
+  # def check_self_and_self_type():
+  #   for cls in ast:
+  #       for feature in cls.Features:
+  #           if isinstance(feature, Method):
+  #               if "SELF_TYPE" in [formal[1] for formal in feature.Formals]:
+  #                   print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
+  #                   exit(1)
 
-                for expr in feature.Body:
-                    if isinstance(expr, ID) and expr.str == "self" and feature.ReturnType.str != cls.Name.str:
-                        print(f"ERROR: {feature.ReturnType.loc}: Type-Check: 'SELF_TYPE' can only be used as return type when referring to the type of 'self'")
-                        exit(1)
+  #               for expr in feature.Body:
+  #                   if isinstance(expr, ID) and expr.str == "self" and feature.ReturnType.str != cls.Name.str:
+  #                       print(f"ERROR: {feature.ReturnType.loc}: Type-Check: 'SELF_TYPE' can only be used as return type when referring to the type of 'self'")
+  #                       exit(1)
 
-            elif isinstance(feature, Attribute):
-                if feature.Type.str == "SELF_TYPE" and feature.Name.str != "self":
-                    print(f"ERROR: {feature.Type.loc}: Type-Check: Attribute {feature.Name.str} in class {cls.Name.str} cannot have 'SELF_TYPE' as type")
-                    exit(1)
+  #           elif isinstance(feature, Attribute):
+  #               if feature.Type.str == "SELF_TYPE" and feature.Name.str != "self":
+  #                   print(f"ERROR: {feature.Type.loc}: Type-Check: Attribute {feature.Name.str} in class {cls.Name.str} cannot have 'SELF_TYPE' as type")
+  #                   exit(1)
   # Check for duplicate attribute definitions in the same class.
   def check_duplicate_attributes():
       for cls in ast:
@@ -521,15 +519,13 @@ def main():
       for cls in ast:
           for feature in cls.Features:
               if isinstance(feature, Method):
-                  print(feature.Formals)
                   for formal in feature.Formals:
-                      print(formal)
                       if formal[1].str not in all_classes:
                           print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
 
   # Add checks for negative test cases
-  check_self_and_self_type()
+  # check_self_and_self_type()
   check_duplicate_attributes()
   check_inherit_duplicate_attributes()
   check_method_parameter_redefinition()
@@ -540,11 +536,24 @@ def main():
   #### ALL TYPE CHECKING HAS PASSED####3
   def print_int_initializer_str(initializer):
     output_str = ""
-    # take the first element of the initializer tuple
-    output_str += f"{initializer[0]}\n"
-    output_str += "Int\ninteger\n"
-    output_str += f"{initializer[1].Integer}\n"
-    return output_str
+    if(str(initializer[1]).startswith("Integer")):
+      # take the first element of the initializer tuple
+      output_str += f"{initializer[0]}\n"
+      output_str += "integer\n"
+      output_str += f"{initializer[1].Integer}\n"
+      return output_str
+    elif(str(initializer[1]).startswith("True")):
+      output_str += f"{initializer[0]}\n"
+      output_str += "true\n"
+      return output_str
+    elif(str(initializer[1]).startswith("False")):
+      output_str += f"{initializer[0]}\n"
+      output_str += "Bool\nfalse\n"
+      return output_str
+    else:
+       print(str(initializer) + "\n")
+       return ""
+  
   
   def print_attributes_str(class_obj, all_classes, ast):
     output_string = ""
@@ -564,7 +573,6 @@ def main():
                 output_string += f"no_initializer\n{feature.Name.str}\n{feature.Type.str}\n"
     return output_string
 
-     
   # def print_formals(formals):
   #     output_string = ""
   #     formal_count = 0 
@@ -676,7 +684,7 @@ def main():
   #     annotated_ast += "\n"  # Empty line to separate class definitions
 
   # Write to .cl-type file
-  with open(fname[:-4] + ".cl-type", "w") as output_file:
+  with open(fname[:-4] + "-type", "w") as output_file:
       output_file.write(class_map ) #+ implementation_map + parent_map + annotated_ast)
 
 
