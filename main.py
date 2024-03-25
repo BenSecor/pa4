@@ -428,24 +428,21 @@ def main():
   check_main_method()
 
   # Check for self and SELF_TYPE mistakes in classes and methods.
-  # def check_self_and_self_type():
-  #   for cls in ast:
-  #       for feature in cls.Features:
-  #           if isinstance(feature, Method):
-  #               if "SELF_TYPE" in [formal[1] for formal in feature.Formals]:
-  #                   print(f"ERROR: {cls.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} uses 'SELF_TYPE' parameter")
-  #                   exit(1)
+  def check_self_and_self_type():
+    for cls in ast:
+        for feature in cls.Features:
+            if isinstance(feature, Method):
+                for formal in feature.Formals:
+                    if formal[1].str == "SELF_TYPE":
+                        print(f"ERROR: {formal[1].loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
+                        exit(1)
 
-  #               for expr in feature.Body:
-  #                   if isinstance(expr, ID) and expr.str == "self" and feature.ReturnType.str != cls.Name.str:
-  #                       print(f"ERROR: {feature.ReturnType.loc}: Type-Check: 'SELF_TYPE' can only be used as return type when referring to the type of 'self'")
-  #                       exit(1)
+                # if feature.ReturnType.str == "SELF_TYPE":
+                #     # Allow SELF_TYPE as a return type
+                #     if not any(isinstance(expr, ID) and expr.str == "self" for expr in feature.Body):
+                #         print(f"ERROR: {feature.ReturnType.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has return type 'SELF_TYPE' but does not refer to 'self' in its body")
+                #         exit(1)
 
-  #           elif isinstance(feature, Attribute):
-  #               if feature.Type.str == "SELF_TYPE" and feature.Name.str != "self":
-  #                   print(f"ERROR: {feature.Type.loc}: Type-Check: Attribute {feature.Name.str} in class {cls.Name.str} cannot have 'SELF_TYPE' as type")
-  #                   exit(1)
-  # Check for duplicate attribute definitions in the same class.
   def check_duplicate_attributes():
       for cls in ast:
           attributes = set()
@@ -510,7 +507,7 @@ def main():
   def check_undefined_attribute_types():
       for cls in ast:
           for feature in cls.Features:
-              if isinstance(feature, Attribute) and feature.Type.str not in all_classes:
+              if isinstance(feature, Attribute) and feature.Type.str not in all_classes+["SELF_TYPE"]:
                   print(f"ERROR: {feature.Type.loc}: Type-Check: Undefined type {feature.Type.str} for attribute {feature.Name.str} in class {cls.Name.str}")
                   exit(1)
 
@@ -520,12 +517,12 @@ def main():
           for feature in cls.Features:
               if isinstance(feature, Method):
                   for formal in feature.Formals:
-                      if formal[1].str not in all_classes:
+                      if formal[1].str not in all_classes+["SELF_TYPE"]:
                           print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
 
-  # Add checks for negative test cases
-  # check_self_and_self_type()
+  #Add checks for negative test cases
+  check_self_and_self_type()
   check_duplicate_attributes()
   check_inherit_duplicate_attributes()
   check_method_parameter_redefinition()
@@ -533,27 +530,151 @@ def main():
   check_undefined_parameter_types()
 
 
-  #### ALL TYPE CHECKING HAS PASSED####3
-  def print_int_initializer_str(initializer):
+  def print_exp(exp):
     output_str = ""
-    if(str(initializer[1]).startswith("Integer")):
-      # take the first element of the initializer tuple
-      output_str += f"{initializer[0]}\n"
-      output_str += "integer\n"
-      output_str += f"{initializer[1].Integer}\n"
+    if isinstance(exp[1], Integer):
+        output_str += f"{exp[0]}\n"
+        output_str += "integer\n"
+        output_str += f"{exp[1].Integer}\n"
+    elif isinstance(exp[1], Plus):
+        output_str += f"{exp[0]}\n"
+        output_str += "plus\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], Minus):
+        output_str += f"{exp[0]}\n"
+        output_str += "minus\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], Times):
+        output_str += f"{exp[0]}\n"
+        output_str += "times\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], Divide):
+        output_str += f"{exp[0]}\n"
+        output_str += "divide\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], LessThan):
+        output_str += f"{exp[0]}\n"
+        output_str += "lt\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], LessThanOrEqual):
+        output_str += f"{exp[0]}\n"
+        output_str += "le\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], Equal):
+        output_str += f"{exp[0]}\n"
+        output_str += "eq\n"
+        output_str += print_exp(exp[1].Left)
+        output_str += print_exp(exp[1].Right)
+    elif isinstance(exp[1], Not):
+        output_str += f"{exp[0]}\n"
+        output_str += "not\n"
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], Negate):
+        output_str += f"{exp[0]}\n"
+        output_str += "negate\n"
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], If):
+        output_str += f"{exp[0]}\n"
+        output_str += "if\n"
+        output_str += print_exp(exp[1].Predicate)
+        output_str += print_exp(exp[1].Then)
+        output_str += print_exp(exp[1].Else)
+    elif isinstance(exp[1], Block):
+        output_str += f"{exp[0]}\n"
+        output_str += "block\n"
+        output_str += f"{len(exp[1].Expressions)}\n"
+        for expression in exp[1].Expressions:
+            output_str += print_exp(expression)
+    elif isinstance(exp[1], New):
+        output_str += f"{exp[0]}\n"
+        output_str += "new\n"
+        output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
+    elif isinstance(exp[1], IsVoid):
+        output_str += f"{exp[0]}\n"
+        output_str += "isvoid\n"
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], Identifier):
+        output_str += f"{exp[0]}\n"
+        output_str += "identifier\n"
+        output_str += f"{exp[1].ID.loc}\n{exp[1].ID.str}\n"
+    elif isinstance(exp[1], Let):
+        output_str += f"{exp[0]}\n"
+        output_str += "let\n"
+        # output_str += f"{len(exp[1].Bindings)}\n"
+        for binding in exp[1].Bindings:
+            output_str += print_binding(binding)
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], Case):
+        output_str += f"{exp[0]}\n"
+        output_str += "case\n"
+        output_str += print_exp(exp[1].Expression)
+        output_str += f"{len(exp[1].Elements)}\n"
+        for element in exp[1].Elements:
+             output_str += f"{element[0].loc}\n{element[0].str}\n"
+             output_str += f"{element[1].loc}\n{element[1].str}\n"
+             output_str += print_exp(element[2])
+    elif isinstance(exp[1], Tilde):
+        output_str += f"{exp[0]}\n"
+        output_str += "tilde\n"
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], StringConstant):
+        output_str += f"{exp[0]}\n"
+        output_str += "string\n"
+        output_str += f"{exp[1].Value}\n"
+    elif isinstance(exp[1], Assign):
+        output_str += f"{exp[0]}\n"
+        output_str += "assign\n"
+        output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
+        output_str += print_exp(exp[1].Expression)
+    elif isinstance(exp[1], DynamicDispatch):
+        output_str += f"{exp[0]}\n"
+        output_str += "dynamic_dispatch\n"
+        output_str += print_exp(exp[1].Object)
+        output_str += f"{exp[1].MethodName.loc}\n{exp[1].MethodName.str}\n"
+        output_str += f"{len(exp[1].ArgsList)}\n"
+        for arg in exp[1].ArgsList:
+            output_str += print_exp(arg)
+    elif isinstance(exp[1], StaticDispatch):
+        output_str += f"{exp[0]}\n"
+        output_str += "static_dispatch\n"
+        output_str += print_exp(exp[1].Object)
+        output_str += f"{exp[1].Type.loc}\n{exp[1].Type.str}\n"
+        output_str += f"{exp[1].MethodName.loc}\n{exp[1].MethodName.str}\n"
+        output_str += f"{len(exp[1].ArgsList)}\n"
+        for arg in exp[1].ArgsList:
+            output_str += print_exp(arg)
+    elif isinstance(exp[1], SelfDispatch):
+        output_str += f"{exp[0]}\n"
+        output_str += "self_dispatch\n"
+        output_str += f"{exp[1].MethodName.loc}\n{exp[1].MethodName.str}\n"
+        output_str += f"{len(exp[1].ArgsList)}\n"
+        for arg in exp[1].ArgsList:
+            output_str += print_exp(arg)
+    elif isinstance(exp[1], While):
+      output_str += f"{exp[0]}\n"
+      output_str += "while\n"
+      output_str += print_exp(exp[1].Predicate)
+      output_str += print_exp(exp[1].Body)
       return output_str
-    elif(str(initializer[1]).startswith("True")):
-      output_str += f"{initializer[0]}\n"
+    elif isinstance(exp[1], TrueConstant):
+      output_str += f"{exp[0]}\n"
       output_str += "true\n"
       return output_str
-    elif(str(initializer[1]).startswith("False")):
-      output_str += f"{initializer[0]}\n"
-      output_str += "Bool\nfalse\n"
+    elif isinstance(exp[1], FalseConstant):
+      output_str += f"{exp[0]}\n"
+      output_str += "false\n"
       return output_str
     else:
-       print(str(initializer) + "\n")
-       return ""
-  
+        raise ValueError(exp)
+
+    return output_str
+
   
   def print_attributes_str(class_obj, all_classes, ast):
     output_string = ""
@@ -568,7 +689,7 @@ def main():
             global attr_count
             attr_count += 1
             if feature.Initializer:
-                output_string += f"initializer\n{feature.Name.str}\n{feature.Type.str}\n{print_int_initializer_str(feature.Initializer)}"
+                output_string += f"initializer\n{feature.Name.str}\n{feature.Type.str}\n{print_exp(feature.Initializer)}"
             else:
                 output_string += f"no_initializer\n{feature.Name.str}\n{feature.Type.str}\n"
     return output_string
@@ -686,7 +807,6 @@ def main():
   # Write to .cl-type file
   with open(fname[:-4] + "-type", "w") as output_file:
       output_file.write(class_map ) #+ implementation_map + parent_map + annotated_ast)
-
 
 main() 
 
