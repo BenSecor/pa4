@@ -258,7 +258,14 @@ def main():
     for cl in ast:
       for feature in cl.Features:
         if isinstance(feature, Method):
-          method_map[cl.Name.str][feature.Name.str] = (feature.Formals, feature.ReturnType)
+          if cl.Name.str not in method_map:
+            method_map[cl.Name.str] = {}
+            method_map[cl.Name.str][feature.Name.str] = (feature.Formals, feature.ReturnType)
+          elif method_map[cl.Name.str].get(feature.Name.str) is not None:
+            print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} redefined in class {cl.Name.str}")
+            exit(1)
+          else:
+            method_map[cl.Name.str][feature.Name.str] = (feature.Formals, feature.ReturnType)
     return method_map
   
   M =  construct_method_map()
@@ -753,29 +760,57 @@ def main():
         if body_type != method_return_type:
             print(f"ERROR: {exp.Body.loc}: Type-Check: Method {exp.Name.str} has wrong return type")
             exit(1)
+    elif isinstance(exp, Block):
+        for expression in exp.Expressions:
+            type_check_exp(O, M, C, expression)
+        return "Object"
+    elif isinstance(exp, New):
+        if exp.Identifier.str not in all_classes:
+            print(f"ERROR: {exp.Identifier.loc}: Type-Check: Undefined type {exp.Identifier.str}")
+            exit(1)
+        return exp.Identifier.str
+    elif isinstance(exp, Identifier):
+        if exp.ID.str == "self":
+            return "SELF_TYPE"
+        if exp.ID.str not in O:
+            print(f"ERROR: {exp.ID.loc}: Type-Check: Undefined attribute {exp.ID.str}")
+            exit(1)
+        return O[exp.ID.str]
+    elif isinstance(exp, StringConstant):
+        return "String"
+    elif isinstance(exp, Tilde):
+        expression = type_check_exp(O, M, C, exp.Expression)
+        if expression != "Int":
+            print(f"ERROR: {exp.Expression.loc}: Type-Check: Tilde operation with non-integer operand")
+            exit(1)
+        return "Int"
     else:
-       print("UNKOWN TYPE")
+       print(f"UNKOWN TYPE {exp} \n")
 
   def check_method_expressions():
      for cl in ast:
         #setup dictionary O
         O = {}
         #Object_Identifiers to Types
-        for feature in cl.Inherits.Features:
-           #add attributes of inheritance class to O
-          if isinstance(feature, Attribute):
-            O[feature.Name] = feature.Type
+        # for cl2 in ast:
+        #   if cl2.Name == cl.Inherits:
+        #     for feature in cl2.Features:
+        #       #add attributes of inheritance class to O
+        #       if isinstance(feature, Attribute):
+        #         O[feature.Name] = feature.Type
         for feature in cl.Features:
           # add attributers of CL to O
           if isinstance(feature, Attribute):
             O[feature.Name] = feature.Type
         #check all identifiers
         #NEED TO ADD THE ATTR ININT type checking and the method type checking
+        print("Attribute CHECKING \n\n\n")
         for feature in cl.Features:
            if isinstance(feature, Attribute):
               if feature.Initializer:
                 type_check_exp(O, M, cl, feature.Initializer)
         #check all the methods using O, M, C
+        print("METHOD CHECKING \n\n\n")
         for feature in cl.Features:
             if isinstance(feature, Method):
                 type_check_exp(O, M, cl, feature.Body)
