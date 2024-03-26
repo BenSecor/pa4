@@ -11,10 +11,9 @@ attr_count = 0
 CoolClass        = namedtuple("CoolClass", "Name Inherits Features")
 Attribute        = namedtuple("Attribute", "Name Type Initializer") 
 Method           = namedtuple("Method",    "Name Formals ReturnType Body") 
-
 # A Cool Identifier is a tuple (pair) of a location and a string.
 ID               = namedtuple("ID",        "loc str") 
-
+Expression = namedtuple("Expression", "loc ekind Type")
 # Kinds of Expressions
 Integer          = namedtuple("Integer",   "Integer") 
 Plus             = namedtuple("Plus",      "Left Right") 
@@ -137,13 +136,13 @@ def main():
   def read_exp ():
     eloc = read() 
     ekind = read_ekind ()
-    return (eloc, ekind) 
+    return Expression(eloc, ekind, None) 
 
   def read_case_exp():
     var = read_id()
     type_id = read_id()
     body_exp = read_exp()
-    return ( var, type_id, body_exp)
+    return (var, type_id, body_exp)
   
   
   def read_assign():
@@ -437,12 +436,6 @@ def main():
                         print(f"ERROR: {formal[1].loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
                         exit(1)
 
-                # if feature.ReturnType.str == "SELF_TYPE":
-                #     # Allow SELF_TYPE as a return type
-                #     if not any(isinstance(expr, ID) and expr.str == "self" for expr in feature.Body):
-                #         print(f"ERROR: {feature.ReturnType.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has return type 'SELF_TYPE' but does not refer to 'self' in its body")
-                #         exit(1)
-
   def check_duplicate_attributes():
       for cls in ast:
           attributes = set()
@@ -521,6 +514,175 @@ def main():
                           print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
 
+  def type_check_exp(exp):
+    if isinstance(exp, Integer):
+        return "Int"
+    elif isinstance(exp, StringConstant):
+        return "String"
+    elif isinstance(exp, TrueConstant) or isinstance(exp, FalseConstant):
+        return "Bool"
+    elif isinstance(exp, Identifier):
+        # Look up the type of the identifier in the class map
+        identifier_type = class_map.lookup_variable_type(exp.ID.str)
+        if identifier_type is None:
+            print(f"Type Error: Undefined variable '{exp.ID.str}'")
+            exit(1)
+        return identifier_type
+    elif isinstance(exp, Assign):
+        var_type = class_map.lookup_variable_type(exp.Identifier.ID.str)
+        if var_type is None:
+            print(f"Type Error: Undefined variable '{exp.Identifier.ID.str}'")
+            exit(1)
+        expr_type = type_check_exp(exp.Expression, class_map)
+        if expr_type != var_type:
+            print("Type Error: Incompatible types in assignment")
+            exit(1)
+        return expr_type
+    elif isinstance(exp, DynamicDispatch):
+        obj_type = type_check_exp(exp.Object, class_map)
+        if obj_type == "SELF_TYPE":
+            obj_type = class_map.current_class_name()
+        if not class_map.is_subtype(obj_type, exp.Type):
+            print("Type Error: Object type does not conform to declared type")
+            exit(1)
+        method = class_map.lookup_method(exp.Type, exp.MethodName)
+        if method is None:
+            print(f"Type Error: Method '{exp.MethodName}' not found in class '{exp.Type}'")
+            exit(1)
+        if len(exp.ArgsList) != len(method.Formals):
+            print("Type Error: Number of arguments does not match method signature")
+            exit(1)
+        for arg_exp, formal in zip(exp.ArgsList, method.Formals):
+            arg_type = type_check_exp(arg_exp, class_map)
+            if not class_map.is_subtype(arg_type, formal.Type):
+                print("Type Error: Argument type does not conform to formal parameter type")
+                exit(1)
+        return method.ReturnType
+    elif isinstance(exp, StaticDispatch):
+        obj_type = type_check_exp(exp.Object, class_map)
+        if obj_type == "SELF_TYPE":
+            obj_type = class_map.current_class_name()
+        if not class_map.is_subtype(obj_type, exp.Type):
+            print("Type Error: Object type does not conform to declared type")
+            exit(1)
+        if not class_map.class_exists(exp.Type):
+            print(f"Type Error: Class '{exp.Type}' does not exist")
+            exit(1)
+        method = class_map.lookup_method(exp.Type, exp.MethodName)
+        if method is None:
+            print(f"Type Error: Method '{exp.MethodName}' not found in class '{exp.Type}'")
+            exit(1)
+        if len(exp.ArgsList) != len(method.Formals):
+            print("Type Error: Number of arguments does not match method signature")
+            exit(1)
+        for arg_exp, formal in zip(exp.ArgsList, method.Formals):
+            arg_type = type_check_exp(arg_exp, class_map)
+            if not class_map.is_subtype(arg_type, formal.Type):
+                print("Type Error: Argument type does not conform to formal parameter type")
+                exit(1)
+        return method.ReturnType
+    elif isinstance(exp, If):
+        cond_type = type_check_exp(exp.Predicate, class_map)
+        if cond_type != "Bool":
+            print("Type Error: If condition must be of type Bool")
+            exit(1)
+        then_type = type_check_exp(exp.Then, class_map)
+        else_type = type_check_exp(exp.Else, class_map)
+        return class_map.least_common_ancestor(then_type, else_type)
+    elif isinstance(exp, While):
+        cond_type = type_check_exp(exp.Predicate, class_map)
+        if cond_type != "Bool":
+            print("Type Error: While condition must be of type Bool")
+            exit(1)
+        type_check_exp(exp.Body, class_map)
+        return "Object"  # While expression does not have a specific type
+    elif isinstance(exp, IsVoid):
+        type_check_exp(exp.Expression, class_map)
+        return "Bool"
+    elif isinstance(exp, Let):
+        for binding in exp.Bindings:
+            if binding.Type == "SELF_TYPE":
+                print("Type Error: Cannot declare self type as a variable type")
+                exit(1)
+            if binding.Initializer:
+                init_type = type_check_exp(binding.Initializer, class_map)
+                if not class_map.is_subtype(init_type, binding.Type):
+                    print("Type Error: Initializer type does not conform to declared type")
+                    exit(1)
+        return type_check_exp(exp.Expression, class_map)
+    elif isinstance(exp, Case):
+        case_type = None
+        for branch in exp.Elements:
+            branch_type = type_check_exp(branch.Expression, class_map)
+            if branch_type == "SELF_TYPE":
+                branch_type = class_map.current_class_name()
+            if case_type is None:
+                case_type = branch_type
+            else:
+                case_type = class_map.least_common_ancestor(case_type, branch_type)
+        return case_type
+    elif isinstance(exp, New):
+        if not class_map.class_exists(exp.Identifier.ID.str):
+            print(f"Type Error: Class '{exp.Identifier.ID.str}' does not exist")
+            exit(1)
+        return exp.Identifier.ID.str
+    elif isinstance(exp, (Plus, Minus, Times, Divide)):
+        left_type = type_check_exp(exp.Left, class_map)
+        right_type = type_check_exp(exp.Right, class_map)
+        if left_type != "Int" or right_type != "Int":
+            print("Type Error: Arithmetic operations must be performed on integers")
+            exit(1)
+        return "Int"
+    elif isinstance(exp, (LessThan, LessThanOrEqual)):
+        left_type = type_check_exp(exp.Left, class_map)
+        right_type = type_check_exp(exp.Right, class_map)
+        if left_type != "Int" or right_type != "Int":
+            print("Type Error: Comparison operations must be performed on integers")
+            exit(1)
+        return "Bool"
+    elif isinstance(exp, Equal):
+        left_type = type_check_exp(exp.Left, class_map)
+        right_type = type_check_exp(exp.Right, class_map)
+        if left_type != right_type:
+            print("Type Error: Incompatible types in equality comparison")
+            exit(1)
+        return "Bool"
+    elif isinstance(exp, Not):
+        operand_type = type_check_exp(exp.Expression, class_map)
+        if operand_type != "Bool":
+            print("Type Error: Logical negation operand must be of type Bool")
+            exit(1)
+        return "Bool"
+    elif isinstance(exp, Negate):
+        operand_type = type_check_exp(exp.Expression, class_map)
+        if operand_type != "Int":
+            print("Type Error: Unary negation operand must be of type Int")
+            exit(1)
+        return "Int"
+    elif isinstance(exp, Block):
+        last_type = None
+        for expr in exp.Expressions:
+            last_type = type_check_exp(expr, class_map)
+        return last_type
+    else:
+        print("Type Error: Expression type not recognized")
+        exit(1)
+
+  def check_method_expressions():
+     for cl in ast:
+        #setup dictionary O
+        #Object_Identifiers to Types
+        for feature in cl.Inherits.Features:
+           #add attributes of inheritance class to O
+        for feature in cl.Features:
+          # add attributers of CL to O
+        #check all identifiers
+
+        #check all the methods using O, M, C
+        for feature in cl.Features:
+            if isinstance(feature, Method):
+                type_check_exp(0, M, C, feature.Body)
+  
   #Add checks for negative test cases
   check_self_and_self_type()
   check_duplicate_attributes()
@@ -528,7 +690,7 @@ def main():
   check_method_parameter_redefinition()
   check_undefined_attribute_types()
   check_undefined_parameter_types()
-
+  check_method_expressions()
 
   def print_exp(exp):
     output_str = ""
@@ -608,8 +770,10 @@ def main():
         output_str += "let\n"
         # output_str += f"{len(exp[1].Bindings)}\n"
         for binding in exp[1].Bindings:
-            output_str += print_binding(binding)
-        output_str += print_exp(exp[1].Expression)
+            if binding.Initializer:
+                output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
+            else:
+                output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n"
     elif isinstance(exp[1], Case):
         output_str += f"{exp[0]}\n"
         output_str += "case\n"
@@ -693,59 +857,58 @@ def main():
             else:
                 output_string += f"no_initializer\n{feature.Name.str}\n{feature.Type.str}\n"
     return output_string
-
-  # def print_formals(formals):
-  #     output_string = ""
-  #     formal_count = 0 
-  #     for formal in formals:
-  #        formal_count+=1
-  #        output_string += formal + "\n"
-  #     return str(formal_count) + "\n"+ output_string
-
-  # def print_method_str(class_obj):
-  #     output_string = ""
-  #     method_count = 0 
-  #     for method in class_obj.Features:
-  #       if isinstance(method, Method):
-  #           method_count+=1
-  #           output_string += method.Name.str + "\n"
-  #           output_string += print_formals(method.Formals)
-
-  #           #if method was inherited (not overidden):
-  #           #   output_string += f"initializer\n{attr.Name.str}\n{attr.Type.str}\n{print_int_initializer_str(attr.Initializer)}"
-  #           #else:
-  #           output_string += class_obj.Name.str + "\n"
-  #           output_string += print_exp(method.Body) + "\n"
-  #     return str(method_count)+"\n"+ output_string
   
-  # def print_default_class_method(cls):
-  #   if cls == "Bool":
-  #       return "3\nabort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"
-  #   elif cls == "Int":
-  #       return "3\nabort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"
-  #   elif cls == "String":
-  #       return "6\nabort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\n"
-  #   elif cls == "IO":
-  #       return "4\nabort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"
-  #   elif cls == "Object":
-  #       return "3\nabort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"
-  #   else:
-  #       return ""
-    
+  def print_method_str(class_obj):
+    output_string = ""
+    method_count = 0 
+    for method in class_obj.Features:
+        if isinstance(method, Method):
+            method_count += 1
+            output_string += method.Name.str + "\n"
+            output_string += print_formals(method.Formals)
+
+            if method.Name.str == "abort" or method.Name.str == "copy" or method.Name.str == "type_name":
+                output_string += f"internal\n{class_obj.Name.str}.{method.Name.str}\n"
+            else:
+                output_string += class_obj.Name.str + "\n"
+                if method.Body != []:
+                  output_string += print_exp(method.Body)
+
+    return str(method_count) + "\n" + output_string
+  
+  def print_formals(formals):
+    formals_str = ""
+    formals_str += str(len(formals)) + "\n"  # Output number of formals
+    for formal in formals:
+        formals_str += formal[0].str + "\n"  # Output formal parameter name
+    return formals_str
+  
+  def print_implementation_map():
+      implementation_map = "implementation_map\n"
+      implementation_map += str(len(sorted_classes)) + "\n"
+      for cls in sorted_classes:
+          class_obj = None
+          for c in ast:
+              if c.Name.str == cls:
+                  class_obj = c
+                  break
+          
+          if class_obj is None:
+              implementation_map += ""  # Skip processing this class
+          else:
+              implementation_map += cls + "\n"
+              implementation_map += print_method_str(class_obj)
+      return implementation_map
+
 # Class Map
   class_map = "class_map\n"
   # sort classes alphabetically
   sorted_classes = sorted(all_classes)
   class_map += str(len(sorted_classes)) + "\n"
-  # print(f"DEBUG: class_map = {class_map}")
-  # print(f"DEBUG: sorted_classes = {sorted_classes}")
   for cls in sorted_classes:
       global attr_count
       attr_count = 0
       class_map += cls + "\n"
-      # print (f"DEBUG: cls = {cls}")
-      # print (f"DEBUG: ast = {ast}")
-      # Find the class object in ast
       class_obj = None
       for c in ast:
           if c.Name.str == cls:
@@ -758,55 +921,12 @@ def main():
           continue
       s = print_attributes_str(class_obj, all_classes, ast)
       class_map += str(attr_count) + "\n" + s
-      
-
-  # print (f"DEBUG: class_map = {class_map}")
-  # # Implementation Map
-  # implementation_map = "implementation_map\n"
-  # implementation_map += str(len(sorted_classes)) + "\n"
-  # for cls in sorted_classes:
-  #     class_obj = None
-  #     for c in ast:
-  #         if c.Name.str == cls:
-  #             class_obj = c
-  #             break
-      
-  #     if class_obj is None:
-  #         implementation_map += print_default_class_method(cls)  # Skip processing this class
-  #     else:
-  #         implementation_map += cls + "\n"
-  #         implementation_map += print_method_str(class_obj)
-        
-  # print (f"DEBUG: imp_map = {implementation_map}")
-  # # Parent Map
-  # parent_map = "parent_map\n"
-  # parent_map += str(len(sorted_classes) - 1) + "\n"
-  # for cls in sorted_classes:
-  #     class_obj = next(c for c in ast if c.Name.str == cls)
-  #     if class_obj.Inherits:
-  #         parent_map += cls + "\n" + class_obj.Inherits.str + "\n"
-
-  # # Annotated AST
-  # annotated_ast = ""
-  # for cls in ast:
-  #     annotated_ast += f"{cls.Name.loc}\n{cls.Name.str}\n"
-  #     for feature in cls.Features:
-  #         if isinstance(feature, Method):
-  #             annotated_ast += f"{feature.Name.loc}\n{feature.Name.str}\n"
-  #             annotated_ast += f"{len(feature.Formals)}\n"
-  #             for formal in feature.Formals:
-  #                 annotated_ast += f"{formal[0].loc}\n{formal[0].str}\n"
-  #             annotated_ast += f"{cls.Name.str}\n" if cls.Name.str != cls.Inherits.str else "\n"
-  #             annotated_ast += f"{feature.Body[0]}\n{feature.ReturnType.str}\n"
-  #         elif isinstance(feature, Attribute):
-  #             annotated_ast += f"{feature.Name.loc}\n{feature.Name.str}\n{feature.Type.str}\n"
-  #             if feature.Initializer:
-  #                 annotated_ast += f"{feature.Initializer[0]}\n{feature.Initializer[1].str}\n"
-  #     annotated_ast += "\n"  # Empty line to separate class definitions
-
-  # Write to .cl-type file
+  
+    # Add this function to your main() function to generate the implementation map
+  implementation_map = print_implementation_map()
+   
   with open(fname[:-4] + "-type", "w") as output_file:
-      output_file.write(class_map ) #+ implementation_map + parent_map + annotated_ast)
+      output_file.write(class_map + implementation_map)
 
 main() 
 
