@@ -269,18 +269,13 @@ def main():
   
   M =  construct_method_map()
 
-  IO = CoolClass(ID("0", "IO"), ID("0", "Object"), [
-      Method(ID("0", "in_int"), [], ID("0", "Int"), []),
-      Method(ID("0", "in_string"), [], ID("0", "String"), []),
-      Method(ID("0", "out_int"), [(ID("0", "x"),ID("0", "Int"))], ID("0", "SELF_TYPE"), []),
-      Method(ID("0", "out_string"), [(ID("0", "x"),ID("0", "String"))], ID("0", "SELF_TYPE"), [])
-  ])
-
-  Object = CoolClass(ID("0", "Object"), None, [
-      Method(ID("0", "abort"), [], ID("0", "Object"), []),
-      Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), []),
-      Method(ID("0", "type_name"), [], ID("0", "String"), [])
-  ])
+  IO = CoolClass(ID("0", "IO"), ID("0", "Object"),
+                [ Method(ID("0", "out_string"), [(ID("0", "x"), ID("0", "String"))], ID("0", "IO"), Expression("0",  "String", StringConstant(""))), 
+                         Method(ID("0", "out_int"), [(ID("0", "x"), ID("0", "Int"))], ID("0", "IO"), Expression("0","String",StringConstant(""))),
+                           Method(ID("0", "in_string"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))),
+                             Method(ID("0", "in_int"), [], ID("0", "Int"), Expression("0", "String", StringConstant("")))])
+  Object = CoolClass(ID("0", "Object"), None, [Method(ID("0", "abort"), [], ID("0", "Object"), Expression("0", "String", StringConstant("")))])
+ 
   # Add base classes to ast
   ast.extend([IO, Object])
 
@@ -378,11 +373,11 @@ def main():
         else:
           attributes.add(feature.Name.str)
       elif isinstance(feature, Method):
-        if feature.Name.str in methods:
+        if feature.Name in methods:
           print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} is redefined in class {cls.Name.str}")
           exit(1)
         else:
-          methods.add(feature.Name.str)
+          methods.add(feature.Name)
 
   # Check for a child class that redefines a parent method but changes the parameters
   def check_method_redefinition():
@@ -401,8 +396,8 @@ def main():
         for feature in cls.Features:
           if isinstance(feature, Method):
             for parent_feature in parent_class.Features:
-              if isinstance(parent_feature, Method) and feature.Name.str == parent_feature.Name.str:
-                if feature.Name.str == parent_feature.Name.str:
+              if isinstance(parent_feature, Method) and feature.Name == parent_feature.Name:
+                if feature.Name == parent_feature.Name:
                   if len(feature.Formals) != len(parent_feature.Formals):
                       print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different number of parameters")
                       exit(1)
@@ -501,7 +496,7 @@ def main():
               for feature in cls.Features:
                   if isinstance(feature, Method):
                       for parent_feature in parent_class.Features:
-                          if isinstance(parent_feature, Method) and feature.Name.str == parent_feature.Name.str:
+                          if isinstance(parent_feature, Method) and feature.Name == parent_feature.Name:
                               if feature.Name.str == parent_feature.Name.str:
                                 if len(feature.Formals) != len(parent_feature.Formals):
                                     print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different number of parameters")
@@ -529,61 +524,86 @@ def main():
                       if formal[1].str not in all_classes+["SELF_TYPE"]:
                           print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
+  
+  '''
+   Output "parent_map \n"
+   Then output the number of parent-child inheritance relations and then \n. This number is equal to the number of classes minus one (since Object has no parent).
+   Then output each child class in turn (in ascending alphabetical order):
+     - Output the name of the child class and then \n.
+     - Output the name of the child class's parent and then \n.
+  '''
+  parent_map = {}
+
+  def create_parent_map(parent_map):
+    for cls in ast:
+      if cls.Inherits:
+        parent_map[cls.Name.str] = cls.Inherits.str
+    for cls2 in base_classes:
+       parent_map[cls2] = "Object"
+    print("parent_map\n")
+    print(len(parent_map))
+    for child, parent in sorted(parent_map.items()):
+      print(child)
+      print(parent)
+
+  create_parent_map(parent_map)
 
   def type_check_exp(O, M, C, exp):
+    if exp == []:
+      return ""
     if isinstance(exp.ekind, Integer):
         return "Int"
     elif isinstance(exp.ekind, Plus):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Plus operation with non-integer operands")
             exit(1)
         return "Int"
     elif isinstance(exp.ekind, Minus):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Minus operation with non-integer operands")
             exit(1)
         return "Int"
     elif isinstance(exp.ekind, Times):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Times operation with non-integer operands")
             exit(1)
         return "Int"
     elif isinstance(exp.ekind, Divide):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Divide operation with non-integer operands")
             exit(1)
         return "Int"
     elif isinstance(exp.ekind, LessThan):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: LessThan operation with non-integer operands")
             exit(1)
         return "Bool"
     elif isinstance(exp.ekind, LessThanOrEqual):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != "Int" or right != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: LessThanOrEqual operation with non-integer operands")
             exit(1)
         return "Bool"
     elif isinstance(exp.ekind, Equal):
-        left = type_check_exp(O, M, C, exp.Left)
-        right = type_check_exp(O, M, C, exp.Right)
+        left = type_check_exp(O, M, C, exp.ekind.Left)
+        right = type_check_exp(O, M, C, exp.ekind.Right)
         if left != right:
             print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types")
             exit(1)
         return "Bool"
     elif isinstance(exp.ekind, Not):
-        operand = type_check_exp(O, M, C, exp.Expression)
+        operand = type_check_exp(O, M, C, exp.ekind.Expression)
         if operand != "Bool":
             print(f"ERROR: {exp.loc}: Type-Check: Not operation with non-boolean operand")
             exit(1)
@@ -647,7 +667,7 @@ def main():
                 exit(1)
         return method_return_type
     elif isinstance(exp.ekind, SelfDispatch):
-        if exp.ekind.MethodName.str not in M[C.Name.str]:
+        if exp.ekind.MethodName.str not in M:
             print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {C.Name.str}")
             exit(1)
         method_formals, method_return_type = M[C.Name.str][exp.ekind.MethodName.str]
@@ -717,6 +737,7 @@ def main():
             branch_type = type_check_exp(new_O, M, C, branch[2])
             branch_types.append(branch_type)
         if len(set(branch_types)) > 1:
+            ## need to do the branch type as a join of the branches
             print(f"ERROR: {branch_types} {exp.loc}: Type-Check: Case branches have different types")
             exit(1)
         return branch_types[0]
@@ -786,22 +807,42 @@ def main():
     else:
        print(f"UNKOWN TYPE {exp} \n")
 
+  def generate_environments(class_node):
+    object_environment = {}
+    method_environment = {}
+    fields = {}
+    methods = {}
+    #fix inheritance
+    if class_node.Name.str in parent_map:
+      for cl in ast:
+         if cl.Name.str == parent_map[class_node.Name.str]:
+            fields, methods = generate_environments(cl)
+
+    # Extract fields
+    for field_node in class_node.Features:
+        if isinstance(field_node, Attribute):
+          field_name = field_node.str
+          field_type = field_node.type
+          fields[field_name] = field_type
+        if isinstance(field_node, Method):
+          method_name = field_node.Name.str
+          #not sure that this is what we are looking for
+          params = [param for param in field_node.Formals]
+          return_type = field_node.ReturnType
+          methods[method_name] = {"params": params, "return": return_type.str}
+
+    # Add class information to environments
+    object_environment = fields
+    method_environment = methods
+    print(fields)
+    print(methods)
+    return object_environment, method_environment
+  
   def check_method_expressions():
      for cl in ast:
         #setup dictionary O
-        O = {}
+        O, M = generate_environments(cl)
         # Object_Identifiers to Types
-        for cl2 in ast:
-          if cl2.Name == cl.Inherits:
-            for feature in cl2.Features:
-              #add attributes of inheritance class to O
-              if isinstance(feature, Attribute):
-                O[feature.Name] = feature.Type
-        for feature in cl.Features:
-          # add attributers of CL to O
-          if isinstance(feature, Attribute):
-            O[feature.Name] = feature.Type
-        #check all identifiers
         #NEED TO ADD THE ATTR ININT type checking and the method type checking
         print("Attribute CHECKING \n\n\n")
         for feature in cl.Features:
@@ -892,10 +933,10 @@ def main():
         output_str += f"{exp[0]}\n"
         output_str += "isvoid\n"
         output_str += print_exp(exp[1].Expression)
-    elif isinstance(exp[1], Identifier):
+    elif isinstance(exp[1], ID):
         output_str += f"{exp[0]}\n"
         output_str += "identifier\n"
-        output_str += f"{exp[1].ID.loc}\n{exp[1].ID.str}\n"
+        output_str += f"{exp[1].loc}\n{exp[1].str}\n"
     elif isinstance(exp[1], Let):
         output_str += f"{exp[0]}\n"
         output_str += "let\n"
