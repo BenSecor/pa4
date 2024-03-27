@@ -10,7 +10,9 @@ attr_count = 0
 # Python's "namedtuple", which is similar. 
 CoolClass        = namedtuple("CoolClass", "Name Inherits Features")
 Attribute        = namedtuple("Attribute", "Name Type Initializer") 
-Method           = namedtuple("Method",    "Name Formals ReturnType Body") 
+Method           = namedtuple("Method",    "Name Formals ReturnType Body")
+Formal           = namedtuple("Formal",    "Name Type")
+
 # A Cool Identifier is a tuple (pair) of a location and a string.
 ID               = namedtuple("ID",        "loc str") 
 Expression = namedtuple("Expression", "loc ekind Type")
@@ -114,7 +116,7 @@ def main():
 
   def read_formal ():
     fname = read_id()
-    ftype = read_id()
+    ftype = read_id().str
     return (fname, ftype) 
 
   def read_binding():
@@ -269,13 +271,19 @@ def main():
   
   M =  construct_method_map()
 
-  IO = CoolClass(ID("0", "IO"), ID("0", "Object"),
-                [ Method(ID("0", "out_string"), [(ID("0", "x"), ID("0", "String"))], ID("0", "IO"), Expression("0",  "String", StringConstant(""))), 
-                         Method(ID("0", "out_int"), [(ID("0", "x"), ID("0", "Int"))], ID("0", "IO"), Expression("0","String",StringConstant(""))),
-                           Method(ID("0", "in_string"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))),
-                             Method(ID("0", "in_int"), [], ID("0", "Int"), Expression("0", "String", StringConstant("")))])
-  Object = CoolClass(ID("0", "Object"), None, [Method(ID("0", "abort"), [], ID("0", "Object"), Expression("0", "String", StringConstant("")))])
- 
+  IO = CoolClass(ID("0", "IO"), ID("0", "Object"), 
+                 [Method(ID("0", "out_string"), [Formal(ID("0", "x"), ID("0", "String"))], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))),
+                    Method(ID("0", "out_int"), [Formal(ID("0", "x"), ID("0", "Int"))], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))), 
+                           Method(ID("0", "in_string"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))), 
+                                  Method(ID("0", "in_int"), [], ID("0", "Int"), Expression("0", "String", StringConstant(""))), 
+                                         Method(ID("0", "abort"), [], ID("0", "Object"), Expression("0", "String", StringConstant(""))), 
+                                                Method(ID("0", "type_name"), [], ID("0", "String"), Expression("0","String",  StringConstant(""))),
+                                                        Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), Expression("0",  "String", StringConstant("")))])
+  Object = CoolClass(ID("0", "Object"), None,
+                        [Method(ID("0", "abort"), [], ID("0", "Object"), Expression("0","String", StringConstant(""))),
+                        Method(ID("0", "type_name"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))),
+                        Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant("")))])
+
   # Add base classes to ast
   ast.extend([IO, Object])
 
@@ -670,7 +678,7 @@ def main():
         if exp.ekind.MethodName.str not in M:
             print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {C.Name.str}")
             exit(1)
-        method_formals, method_return_type = M[C.Name.str][exp.ekind.MethodName.str]
+        method_formals, method_return_type = M[exp.ekind.MethodName.str]
         if len(exp.ekind.ArgsList) != len(method_formals):
             print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
             exit(1)
@@ -825,17 +833,17 @@ def main():
           field_type = field_node.type
           fields[field_name] = field_type
         if isinstance(field_node, Method):
-          method_name = field_node.Name.str
-          #not sure that this is what we are looking for
-          params = [param for param in field_node.Formals]
-          return_type = field_node.ReturnType
-          methods[method_name] = {"params": params, "return": return_type.str}
+            print(field_node)
+            method_name = field_node.Name.str
+            method_formals = field_node.Formals
+            method_type = field_node.ReturnType
+            methods[method_name] = (method_formals, method_type)
 
     # Add class information to environments
     object_environment = fields
     method_environment = methods
-    print(fields)
-    print(methods)
+    # print(fields)
+    # print(methods)
     return object_environment, method_environment
   
   def check_method_expressions():
@@ -1007,7 +1015,8 @@ def main():
       output_str += "false\n"
       return output_str
     else:
-        raise ValueError(exp)
+        #raise ValueError(exp)
+        print(f"UNKOWN TYPE printing {exp} \n")
 
     return output_str
 
