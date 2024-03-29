@@ -547,18 +547,23 @@ def main():
   parent_map = {}
 
   def create_parent_map(parent_map):
+    result = "parent_map\n"
     for cls in ast:
       if cls.Inherits:
         parent_map[cls.Name.str] = cls.Inherits.str
     for cls2 in base_classes:
        parent_map[cls2] = "Object"
+    result += str(len(parent_map)) + "\n"
+    for child, parent in sorted(parent_map.items()):
+        result += child + "\n" + parent + "\n"
+    return result
     # print("parent_map\n")
     # print(len(parent_map))
     # for child, parent in sorted(parent_map.items()):
     #   print(child)
     #   print(parent)
 
-  create_parent_map(parent_map)
+  parentMapString = create_parent_map(parent_map)
 
   def type_check_exp(O, M, C, exp):
     if exp == []:
@@ -1076,7 +1081,7 @@ def main():
     im['Object'] = IMObject("Object", 3,  "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
 
     im['Bool'] = IMObject("Bool", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
-    im['String'] = IMObject("String", 6, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\nparent_map\n5\nBool\nObject\nIO\nObject\nInt\nObject\nMain\nObject\nString\nObject\n1\n1\nMain\ninherits\n1\nObject\n2\nattribute_init\n2\nx\n2\nInt\n2\nInt\ninteger\n1\nmethod\n3\nmain\n0\n3\nObject\n3\nInt\ninteger\n5\n")
+    im['String'] = IMObject("String", 6, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\n")
     im['Int'] = IMObject("Int", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
     #im [class name] = [number of methods (including inheritance)][methods in order of printing(order is inheritance first, ordered by appearance)]
     for c in user_classes:
@@ -1153,11 +1158,235 @@ def main():
       s = print_attributes_str(class_obj, all_classes, ast)
       class_map += str(attr_count) + "\n" + s
   
-    # Add this function to your main() function to generate the implementation map
   implementation_map = print_implementation_map()
+
+  # ANNOTATED AST CODE STARTS HERE
+
+  global astString
+  astString = ""
+
+  # This function prints an identifier (name and location, each on seperate lines)
+  def print_identifier(id):
+      global astString
+      astString += (id.loc + "\n" + id.str + "\n")
+      
+
+  # This function prints an expression, checking each expression type using different print methods when needed
+  def print_expression(exp):
+        global astString
+        # check by ekind
+        astString += (exp[0] + "\n")
+        # output the type of the expression by calling the type_check_exp function
+        O = {}
+        M = {}
+        C = {}
+        astString += (type_check_exp(O, M, C, exp) + "\n")
+
+
+
+        # astString += (str(exp[2]) + "\n")
+
+        if isinstance(exp[1], Integer):
+            astString += ("integer\n")
+            astString += (exp[1].Integer + "\n")
+        elif isinstance(exp[1], Plus):
+            astString += ("plus\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], Minus):
+            astString += ("minus\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], Times):
+            astString += ("times\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], Divide):
+            astString += ("divide\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], LessThan):
+            astString += ("lt\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], LessThanOrEqual):
+            astString += ("le\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], Equal):
+            astString += ("eq\n")
+            print_expression(exp[1].Left)
+            print_expression(exp[1].Right)
+        elif isinstance(exp[1], Not):
+            astString += ("not\n")
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], Negate):
+            astString += ("negate\n")
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], If):
+            astString += ("if\n")
+            print_expression(exp[1].Predicate)
+            print_expression(exp[1].Then)
+            print_expression(exp[1].Else)
+        elif isinstance(exp[1], Block):
+            astString += ("block\n")
+            astString += (str(len(exp[1].Expressions)) + "\n")
+            for expression in exp[1].Expressions:
+                print_expression(expression)
+        elif isinstance(exp[1], New):
+            astString += ("new\n")
+            print_identifier(exp[1].Identifier)
+        elif isinstance(exp[1], IsVoid):
+            astString += ("isvoid\n")
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], ID):
+            astString += ("identifier\n")
+            print_identifier(exp[1])
+        elif isinstance(exp[1], Let):
+            astString += ("let\n")
+            print_list(exp[1].Bindings, print_binding)
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], Case):
+            astString += ("case\n")
+            print_expression(exp[1].Expression)
+            astString += (str(len(exp[1].Elements)) + "\n")
+            for element in exp[1].Elements:
+                print_case_element(element)
+        elif isinstance(exp[1], Tilde):
+            astString += ("tilde\n")
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], StringConstant):
+            astString += ("string\n")
+            astString += (exp[1].Value + "\n")
+        elif isinstance(exp[1], Assign):
+            astString += ("assign\n")
+            print_identifier(exp[1].Identifier)
+            print_expression(exp[1].Expression)
+        elif isinstance(exp[1], DynamicDispatch):
+            astString += ("dynamic_dispatch\n")
+            print_expression(exp[1].Object)
+            print_identifier(exp[1].MethodName)
+            astString += (str(len(exp[1].ArgsList)) + "\n")
+            for arg in exp[1].ArgsList:
+                print_expression(arg)
+        elif isinstance(exp[1], StaticDispatch):
+            astString += ("static_dispatch\n")
+            print_expression(exp[1].Object)
+            print_identifier(exp[1].Type)
+            print_identifier(exp[1].MethodName)
+            astString += (str(len(exp[1].ArgsList)) + "\n")
+            for arg in exp[1].ArgsList:
+                print_expression(arg)
+        elif isinstance(exp[1], SelfDispatch):
+            astString += ("self_dispatch\n")
+            print_identifier(exp[1].MethodName)
+            astString += (str(len(exp[1].ArgsList)) + "\n")
+            for arg in exp[1].ArgsList:
+                print_expression(arg)
+        elif isinstance(exp[1], While):
+            astString += ("while\n")
+            print_expression(exp[1].Predicate)
+            print_expression(exp[1].Body)
+        elif isinstance(exp[1], TrueConstant):
+            astString += ("true\n")
+        elif isinstance(exp[1], FalseConstant):
+            astString += ("false\n")
+        else:
+            print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
+
+       
+
+  # This function prints a binding either let_binding_no_init or let_binding_init
+  def print_binding(attr):
+      global astString
+      # if let_binding_no_init
+      if attr.Initializer == None:
+          astString += ("let_binding_no_init\n")
+          print_identifier(ast.Name)
+          print_identifier(ast.Type)
+      else:
+          astString += ("let_binding_init\n")
+          print_identifier(ast.Name)
+          print_identifier(ast.Type)
+          print_expression(ast.Initializer)
+
+
+  # This function prints a case element
+  def print_case_element(ast):
+      global astString
+      print_identifier(ast[0])
+      print_identifier(ast[1])
+      print_expression(ast[2])   
+
+  # This function prints a feature, checking each feature type (attribute_no_init, attribute_init, method)
+  def print_feature(feature):
+      global astString
+      if isinstance(feature, Attribute):
+            if feature.Initializer:
+                astString += ("attribute_init\n")
+                print_identifier(feature.Name)
+                print_identifier(feature.Type)
+                print_expression(feature.Initializer)
+            else:
+                astString += ("attribute_no_init\n")
+                print_identifier(feature.Name)
+                print_identifier(feature.Type)
+      elif isinstance(feature, Method):
+            astString += ("method\n")
+            print_identifier(feature.Name)
+            astString += (str(len(feature.Formals)) + "\n")
+            # use print list
+            print_list(feature.Formals, print_formal)
+            print_identifier(feature.ReturnType)
+            print_expression(feature.Body)
+      else:
+            print(f"UNKOWN TYPE AST STUFF printing {ast} \n")
+
+  # This function prints a formal
+  def print_formal(formal):
+        global astString
+        print_identifier(formal[0])
+        print_identifier(formal[1])
+
+
+  # This function prints a list of elements starting with the number of elements
+  def print_list(ast, print_element_function):
+      global astString
+      count = 0
+      for cls in ast:
+          if cls.Name.str != "Object" and cls.Name.str != "IO":
+              count += 1
+    
+      if count > 0:
+          astString += (str(count) + "\n")
+    
+      for element in ast:
+            print_element_function(element)
+
+  # This function prints a class whether it inherits or not
+  def print_class(cls):
+      global astString
+      print("CLASS NAME: " + cls.Name.str)
+      if cls.Name.str != "IO" and cls.Name.str != "Object":
+        if cls.Inherits:
+                print_identifier(cls.Name)
+                astString += ("inherits\n")
+                print_identifier(cls.Inherits)
+                print_list(cls.Features, print_feature)
+        else:
+                print_identifier(cls.Name)
+                print_list(cls.Features, print_feature)
+
+
+  def print_program(ast):
+      print_list(ast, print_class)
+    
+  print_program(ast)
+
+  # ANNOTATED AST CODE ENDS HERE
    
   with open(fname[:-4] + "-type", "w") as output_file:
-      output_file.write(class_map + implementation_map)
+      output_file.write(class_map + implementation_map + parentMapString + astString)
 
 main() 
 

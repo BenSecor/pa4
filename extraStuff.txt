@@ -1,0 +1,104 @@
+# This function prints an expression, checking each expression type using different print methods when needed
+  def print_expression(exp):
+        global astString
+        # find instance
+        exp = exp[1]
+        if isinstance(exp, Integer):
+            astString += ("integer\n" + exp.Integer + "\n")
+        elif isinstance(exp, StringConstant):
+            astString += ("string\n" + exp.Value + "\n")
+        elif isinstance(exp, Plus):
+            astString += ("plus\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, Minus):
+            astString += ("minus\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, Times):
+            astString += ("times\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, Divide):
+            astString += ("divide\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, LessThan):
+            astString += ("lt\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, LessThanOrEqual):
+            astString += ("le\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, Equal):
+            astString += ("eq\n")
+            print_expression(exp.Left)
+            print_expression(exp.Right)
+        elif isinstance(exp, Not):
+            astString += ("not\n")
+            print_expression(exp.Expression)
+        elif isinstance(exp, Negate):
+            astString += ("negate\n")
+            print_expression(exp.Expression)
+        elif isinstance(exp, If):
+            astString += ("if\n")
+            print_expression(exp.Predicate)
+            print_expression(exp.Then)
+            print_expression(exp.Else)
+        elif isinstance(exp, Block):
+            astString += ("block\n")
+            # use print list
+            print_list(exp.Expressions, print_expression)
+        elif isinstance(exp, New):
+            astString += ("new\n")
+            print_identifier(exp.Identifier)
+        elif isinstance(exp, IsVoid):
+            astString += ("isvoid\n")
+            print_expression(exp.Expression)
+        elif isinstance(exp, ID):
+            astString += ("identifier\n")
+            print_identifier(exp)
+        elif isinstance(exp, Let):
+            astString += ("let\n")
+            print_list(exp.Bindings, print_binding)
+            print_expression(exp.Expression)
+        elif isinstance(exp, Case):
+            astString += ("case\n")
+            print_expression(exp.Expression)
+            print_list(exp.Elements, print_case_element)
+        elif isinstance(exp, Tilde):
+            astString += ("tilde\n")
+            print_expression(exp.Expression)
+        elif isinstance(exp, StringConstant):
+            astString += ("string\n")
+            astString += (exp.Value + "\n")
+        elif isinstance(exp, Assign):
+            astString += ("assign\n")
+            print_identifier(exp.Identifier)
+            print_expression(exp.Expression)
+        elif isinstance(exp, DynamicDispatch):
+            astString += ("dynamic_dispatch\n")
+            print_expression(exp.Object)
+            print_identifier(exp.MethodName)
+            print_list(exp.ArgsList, print_expression)
+        elif isinstance(exp, StaticDispatch):
+            astString += ("static_dispatch\n")
+            print_expression(exp.Object)
+            print_identifier(exp.Type)
+            print_identifier(exp.MethodName)
+            print_list(exp.ArgsList, print_expression)
+        elif isinstance(exp, SelfDispatch):
+            astString += ("self_dispatch\n")
+            print_identifier(exp.MethodName)
+            print_list(exp.ArgsList, print_expression)
+        elif isinstance(exp, While):
+            astString += ("while\n")
+            print_expression(exp.Predicate)
+            print_expression(exp.Body)
+        elif isinstance(exp, TrueConstant):
+            astString += ("true\n")
+        elif isinstance(exp, FalseConstant):
+            astString += ("false\n")
+        else:
+            print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
