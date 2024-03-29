@@ -13,6 +13,7 @@ Attribute        = namedtuple("Attribute", "Name Type Initializer")
 Method           = namedtuple("Method",    "Name Formals ReturnType Body")
 Formal           = namedtuple("Formal",    "Name Type")
 
+IMObject = namedtuple("IMObject", "Name NumMethods Methods")
 # A Cool Identifier is a tuple (pair) of a location and a string.
 ID               = namedtuple("ID",        "loc str") 
 Expression = namedtuple("Expression", "loc ekind Type")
@@ -106,10 +107,10 @@ def main():
       finit = read_exp()
       return Attribute(fname, ftype, finit)
     elif a == "method":
-      mname = read_id ()
+      mname = read_id()
       formals = read_list(read_formal)
-      mtype = read_id ()
-      mbody = read_exp ()
+      mtype = read_id()
+      mbody = read_exp()
       return Method(mname, formals, mtype, mbody)
     else:
       raise(Exception(f"read_feature {a}"))
@@ -284,6 +285,7 @@ def main():
                         Method(ID("0", "type_name"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))),
                         Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant("")))])
 
+  ast2 = ast
   # Add base classes to ast
   ast.extend([IO, Object])
 
@@ -364,7 +366,7 @@ def main():
       if has_cycle(class_graph, cls, visited, rec_stack):
         print(f"ERROR: 0: Type-Check: inheritance cycle: {cls}") 
         exit(1) 
-  
+
   user_classes = topological_sort(ast)
   base_classes.reverse()  # Reverse the base classes to get the correct order
   all_classes = (base_classes + user_classes)
@@ -451,9 +453,10 @@ def main():
         for feature in cls.Features:
             if isinstance(feature, Method):
                 for formal in feature.Formals:
-                    if formal[1].str == "SELF_TYPE":
-                        print(f"ERROR: {formal[1].loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
-                        exit(1)
+                    if isinstance(formal,Formal):
+                      if formal.Type == "SELF_TYPE":
+                          print(f"ERROR: {formal.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
+                          exit(1)
 
   def check_duplicate_attributes():
       for cls in ast:
@@ -529,8 +532,9 @@ def main():
           for feature in cls.Features:
               if isinstance(feature, Method):
                   for formal in feature.Formals:
-                      if formal[1].str not in all_classes+["SELF_TYPE"]:
-                          print(f"ERROR: {formal[1].loc}: Type-Check: Undefined type {formal[1].str} for parameter {formal[0].str} in method {feature.Name.str} of class {cls.Name.str}")
+                    if isinstance(formal,Formal):
+                      if formal.Type.str not in all_classes+["SELF_TYPE"]:
+                          print(f"ERROR: {formal.Name.loc}: Type-Check: Undefined type {formal.Type.str} for parameter {formal.Name.str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
   
   '''
@@ -548,11 +552,11 @@ def main():
         parent_map[cls.Name.str] = cls.Inherits.str
     for cls2 in base_classes:
        parent_map[cls2] = "Object"
-    print("parent_map\n")
-    print(len(parent_map))
-    for child, parent in sorted(parent_map.items()):
-      print(child)
-      print(parent)
+    # print("parent_map\n")
+    # print(len(parent_map))
+    # for child, parent in sorted(parent_map.items()):
+    #   print(child)
+    #   print(parent)
 
   create_parent_map(parent_map)
 
@@ -640,13 +644,13 @@ def main():
             exit(1)
         return then_exp
     elif isinstance(exp.ekind, Assign):
-        if exp.ekind.Identifier.ID.str == "self":
-            print(f"ERROR: {exp.ekind.Identifier.ID.loc}: Type-Check: Cannot assign to self")
+        if exp.ekind.Identifier.str == "self":
+            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Cannot assign to self")
             exit(1)
-        if exp.Identifier.str not in O:
-            print(f"ERROR: {exp.ekind.Identifier.ID.loc}: Type-Check: Undefined attribute {exp.Identifier.str}")
+        if exp.ekind.Identifier.str not in O:
+            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Undefined attribute {exp.Identifier.str}")
             exit(1)
-        identifier_type = O[exp.ekind.Identifier.ID.str]
+        identifier_type = O[exp.ekind.Identifier.str]
         expression_type = type_check_exp(O, M, C, exp.ekind.Expression)
         if identifier_type != expression_type:
             print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
@@ -659,10 +663,10 @@ def main():
         if object_type not in all_classes:
             print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
             exit(1)
-        if exp.ekind.MethodName.str not in M[object_type]:
+        if exp.ekind.MethodName.str not in M:
             print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.MethodName.str} in class {object_type}")
             exit(1)
-        method_formals, method_return_type = M[object_type][exp.ekind.MethodName.str]
+        method_formals, method_return_type = M[exp.ekind.MethodName.str]
         if len(exp.ekind.ArgsList) != len(method_formals):
             print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
             exit(1)
@@ -747,7 +751,7 @@ def main():
         if len(set(branch_types)) > 1:
             ## need to do the branch type as a join of the branches
             print(f"ERROR: {branch_types} {exp.loc}: Type-Check: Case branches have different types")
-            exit(1)
+            # exit(1)
         return branch_types[0]
     elif isinstance(exp.ekind, While):
         predicate = type_check_exp(O, M, C, exp.ekind.Predicate)
@@ -801,7 +805,7 @@ def main():
         if exp.ekind.str == "self":
             return "SELF_TYPE"
         if exp.ekind.str not in O:
-            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.str}")
+            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.ekind.str}")
             exit(1)
         return O[exp.ekind.str]
     elif isinstance(exp.ekind, StringConstant):
@@ -813,7 +817,9 @@ def main():
             exit(1)
         return "Int"
     else:
-       print(f"UNKOWN TYPE {exp} \n")
+      print(f"UNKOWN TYPE {exp} \n")
+      return ""
+      
 
   def generate_environments(class_node):
     object_environment = {}
@@ -821,19 +827,20 @@ def main():
     fields = {}
     methods = {}
     #fix inheritance
-    if class_node.Name.str in parent_map:
-      for cl in ast:
-         if cl.Name.str == parent_map[class_node.Name.str]:
-            fields, methods = generate_environments(cl)
+    # if class_node.Name.str :
+    #   for cl in ast:
+    #      if cl.Name.str == parent_map[class_node.Name.str]:
+    #         fields, methods = generate_environments(cl)
 
     # Extract fields
     for field_node in class_node.Features:
         if isinstance(field_node, Attribute):
-          field_name = field_node.str
-          field_type = field_node.type
+          # print(field_node)
+          field_name = field_node.Name.str
+          field_type = field_node.Type.str
           fields[field_name] = field_type
         if isinstance(field_node, Method):
-            print(field_node)
+            # print(field_node)
             method_name = field_node.Name.str
             method_formals = field_node.Formals
             method_type = field_node.ReturnType
@@ -852,13 +859,13 @@ def main():
         O, M = generate_environments(cl)
         # Object_Identifiers to Types
         #NEED TO ADD THE ATTR ININT type checking and the method type checking
-        print("Attribute CHECKING \n\n\n")
+        # print("Attribute CHECKING \n\n\n")
         for feature in cl.Features:
            if isinstance(feature, Attribute):
               if feature.Initializer:
                 type_check_exp(O, M, cl, feature.Initializer)
         #check all the methods using O, M, C
-        print("METHOD CHECKING \n\n\n")
+        # print("METHOD CHECKING \n\n\n")
         for feature in cl.Features:
             if isinstance(feature, Method):
                 type_check_exp(O, M, cl, feature.Body)
@@ -876,75 +883,91 @@ def main():
     output_str = ""
     if isinstance(exp[1], Integer):
         output_str += f"{exp[0]}\n"
+        output_str += "Int\n"
         output_str += "integer\n"
         output_str += f"{exp[1].Integer}\n"
+        return output_str
     elif isinstance(exp[1], Plus):
         output_str += f"{exp[0]}\n"
         output_str += "plus\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], Minus):
         output_str += f"{exp[0]}\n"
         output_str += "minus\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], Times):
         output_str += f"{exp[0]}\n"
         output_str += "times\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], Divide):
         output_str += f"{exp[0]}\n"
         output_str += "divide\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], LessThan):
         output_str += f"{exp[0]}\n"
         output_str += "lt\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], LessThanOrEqual):
         output_str += f"{exp[0]}\n"
         output_str += "le\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], Equal):
         output_str += f"{exp[0]}\n"
         output_str += "eq\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
+        return output_str
     elif isinstance(exp[1], Not):
         output_str += f"{exp[0]}\n"
         output_str += "not\n"
         output_str += print_exp(exp[1].Expression)
+        return output_str
     elif isinstance(exp[1], Negate):
         output_str += f"{exp[0]}\n"
         output_str += "negate\n"
         output_str += print_exp(exp[1].Expression)
+        return output_str
     elif isinstance(exp[1], If):
         output_str += f"{exp[0]}\n"
         output_str += "if\n"
         output_str += print_exp(exp[1].Predicate)
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
+        return output_str
     elif isinstance(exp[1], Block):
         output_str += f"{exp[0]}\n"
         output_str += "block\n"
         output_str += f"{len(exp[1].Expressions)}\n"
         for expression in exp[1].Expressions:
             output_str += print_exp(expression)
+        return output_str
     elif isinstance(exp[1], New):
         output_str += f"{exp[0]}\n"
         output_str += "new\n"
         output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
+        return output_str
     elif isinstance(exp[1], IsVoid):
         output_str += f"{exp[0]}\n"
         output_str += "isvoid\n"
         output_str += print_exp(exp[1].Expression)
+        return output_str
     elif isinstance(exp[1], ID):
         output_str += f"{exp[0]}\n"
         output_str += "identifier\n"
         output_str += f"{exp[1].loc}\n{exp[1].str}\n"
+        return output_str
     elif isinstance(exp[1], Let):
         output_str += f"{exp[0]}\n"
         output_str += "let\n"
@@ -954,6 +977,7 @@ def main():
                 output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
             else:
                 output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n"
+        return output_str
     elif isinstance(exp[1], Case):
         output_str += f"{exp[0]}\n"
         output_str += "case\n"
@@ -963,19 +987,23 @@ def main():
              output_str += f"{element[0].loc}\n{element[0].str}\n"
              output_str += f"{element[1].loc}\n{element[1].str}\n"
              output_str += print_exp(element[2])
+        return output_str
     elif isinstance(exp[1], Tilde):
         output_str += f"{exp[0]}\n"
         output_str += "tilde\n"
         output_str += print_exp(exp[1].Expression)
+        return output_str
     elif isinstance(exp[1], StringConstant):
         output_str += f"{exp[0]}\n"
         output_str += "string\n"
         output_str += f"{exp[1].Value}\n"
+        return output_str
     elif isinstance(exp[1], Assign):
         output_str += f"{exp[0]}\n"
         output_str += "assign\n"
         output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
         output_str += print_exp(exp[1].Expression)
+        return output_str
     elif isinstance(exp[1], DynamicDispatch):
         output_str += f"{exp[0]}\n"
         output_str += "dynamic_dispatch\n"
@@ -984,6 +1012,7 @@ def main():
         output_str += f"{len(exp[1].ArgsList)}\n"
         for arg in exp[1].ArgsList:
             output_str += print_exp(arg)
+        return output_str
     elif isinstance(exp[1], StaticDispatch):
         output_str += f"{exp[0]}\n"
         output_str += "static_dispatch\n"
@@ -993,6 +1022,7 @@ def main():
         output_str += f"{len(exp[1].ArgsList)}\n"
         for arg in exp[1].ArgsList:
             output_str += print_exp(arg)
+        return output_str
     elif isinstance(exp[1], SelfDispatch):
         output_str += f"{exp[0]}\n"
         output_str += "self_dispatch\n"
@@ -1000,6 +1030,7 @@ def main():
         output_str += f"{len(exp[1].ArgsList)}\n"
         for arg in exp[1].ArgsList:
             output_str += print_exp(arg)
+        return output_str
     elif isinstance(exp[1], While):
       output_str += f"{exp[0]}\n"
       output_str += "while\n"
@@ -1015,7 +1046,6 @@ def main():
       output_str += "false\n"
       return output_str
     else:
-        #raise ValueError(exp)
         print(f"UNKOWN TYPE printing {exp} \n")
 
     return output_str
@@ -1039,23 +1069,39 @@ def main():
                 output_string += f"no_initializer\n{feature.Name.str}\n{feature.Type.str}\n"
     return output_string
   
-  def print_method_str(class_obj):
-    output_string = ""
-    method_count = 0 
-    for method in class_obj.Features:
-        if isinstance(method, Method):
-            method_count += 1
-            output_string += method.Name.str + "\n"
-            output_string += print_formals(method.Formals)
+  
+  def build_imp_map():
+    im = {}
+    im['IO'] = IMObject("IO", 7, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nin_int\n0\nIO\n0\nInt\ninternal\nIO.in_int\nin_string\n0\nIO\n0\nString\ninternal\nIO.in_string\nout_int\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_int\nout_string\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_string\n")
+    im['Object'] = IMObject("Object", 3,  "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
 
-            if method.Name.str == "abort" or method.Name.str == "copy" or method.Name.str == "type_name":
-                output_string += f"internal\n{class_obj.Name.str}.{method.Name.str}\n"
-            else:
+    im['Bool'] = IMObject("Bool", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
+    im['String'] = IMObject("String", 6, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\nparent_map\n5\nBool\nObject\nIO\nObject\nInt\nObject\nMain\nObject\nString\nObject\n1\n1\nMain\ninherits\n1\nObject\n2\nattribute_init\n2\nx\n2\nInt\n2\nInt\ninteger\n1\nmethod\n3\nmain\n0\n3\nObject\n3\nInt\ninteger\n5\n")
+    im['Int'] = IMObject("Int", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
+    #im [class name] = [number of methods (including inheritance)][methods in order of printing(order is inheritance first, ordered by appearance)]
+    for c in user_classes:
+      if(c not in ['Object', 'IO']):
+        output_string = ""
+        method_count = 0 
+        for cl in ast:
+            if cl.Name.str == c:
+                class_obj = cl
+                break
+        print(class_obj.Name.str)
+        output_string = ""
+        count = 0
+        for feature in class_obj.Features:
+            if isinstance(feature, Method):
+                count += 1
+                output_string += feature.Name.str + "\n"
+                output_string += print_formals(feature.Formals)
                 output_string += class_obj.Name.str + "\n"
-                if method.Body != []:
-                  output_string += print_exp(method.Body)
-
-    return str(method_count) + "\n" + output_string
+                output_string += print_exp(feature.Body)
+        if class_obj.Inherits:
+            count += im[class_obj.Inherits.str].NumMethods
+            output_string = im[class_obj.Inherits.str].Methods + output_string
+        im[class_obj.Name.str] = IMObject(class_obj.Name.str, count, output_string)
+    return im
   
   def print_formals(formals):
     formals_str = ""
@@ -1065,26 +1111,30 @@ def main():
     return formals_str
   
   def print_implementation_map():
+      im = build_imp_map()
       implementation_map = "implementation_map\n"
       implementation_map += str(len(sorted_classes)) + "\n"
       for cls in sorted_classes:
-          class_obj = None
-          for c in ast:
-              if c.Name.str == cls:
-                  class_obj = c
-                  break
+          implementation_map += im[cls].Name + "\n" + str(im[cls].NumMethods) + "\n" + im[cls].Methods
+         
+          # class_obj = None
+          # for c in ast:
+          #     if c.Name.str == cls:
+          #         class_obj = c
+          #         break
           
-          if class_obj is None:
-              implementation_map += ""  # Skip processing this class
-          else:
-              implementation_map += cls + "\n"
-              implementation_map += print_method_str(class_obj)
-      return implementation_map
+          # if class_obj is None:
+          #     implementation_map += ""  # Skip processing this class
+          # else:
+          #     # implementation_map += print_attributes_str(class_obj, all_classes, ast)
+              
+      return implementation_map 
 
 # Class Map
   class_map = "class_map\n"
   # sort classes alphabetically
   sorted_classes = sorted(all_classes)
+  print(sorted_classes)
   class_map += str(len(sorted_classes)) + "\n"
   for cls in sorted_classes:
       global attr_count
