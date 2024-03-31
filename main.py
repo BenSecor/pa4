@@ -825,43 +825,37 @@ def main():
       print(f"UNKOWN TYPE {exp} \n")
       return ""
       
+  def generate_O(class_node):
+    # Generates O to hold all instance variables in the class
+    # O[name] = Type
+    O = {}
+    for feature in class_node.Features:
+        if isinstance(feature, Attribute):
+            O[feature.Name] = feature.Type
+    return O
 
-  def generate_environments(class_node):
-    object_environment = {}
-    method_environment = {}
-    fields = {}
-    methods = {}
-    #fix inheritance
-    # if class_node.Name.str :
-    #   for cl in ast:
-    #      if cl.Name.str == parent_map[class_node.Name.str]:
-    #         fields, methods = generate_environments(cl)
-
-    # Extract fields
-    for field_node in class_node.Features:
-        if isinstance(field_node, Attribute):
-          # print(field_node)
-          field_name = field_node.Name.str
-          field_type = field_node.Type.str
-          fields[field_name] = field_type
-        if isinstance(field_node, Method):
-            # print(field_node)
-            method_name = field_node.Name.str
-            method_formals = field_node.Formals
-            method_type = field_node.ReturnType
-            methods[method_name] = (method_formals, method_type)
-
-    # Add class information to environments
-    object_environment = fields
-    method_environment = methods
-    # print(fields)
-    # print(methods)
-    return object_environment, method_environment
+  def generate_M(ast):
+    # Builds a M dictionary for the entire program to help type check method calls
+    # M[Class][Method_Name] = (Args, ReturnType)
+    M = {}
+    for class_node in ast:
+        class_methods = {}
+        for feature in class_node.Features:
+            if isinstance(feature, Method):
+                method_name = feature.Name
+                arg_types = [(formal.Name, formal.Type) for formal in feature.Formals]
+                return_type = feature.ReturnType
+                class_methods[method_name] = (arg_types, return_type)
+        M[class_node.Name] = class_methods
+    return M
+    
+    
   
   def check_method_expressions():
+     M = generate_M(ast)
      for cl in ast:
         #setup dictionary O
-        O, M = generate_environments(cl)
+        O = generate_O(cl)
         # Object_Identifiers to Types
         #NEED TO ADD THE ATTR ININT type checking and the method type checking
         # print("Attribute CHECKING \n\n\n")
@@ -951,13 +945,6 @@ def main():
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
         return output_str
-    elif isinstance(exp[1], Block):
-        output_str += f"{exp[0]}\n"
-        output_str += "block\n"
-        output_str += f"{len(exp[1].Expressions)}\n"
-        for expression in exp[1].Expressions:
-            output_str += print_exp(expression)
-        return output_str
     elif isinstance(exp[1], New):
         output_str += f"{exp[0]}\n"
         output_str += "new\n"
@@ -973,16 +960,25 @@ def main():
         output_str += "identifier\n"
         output_str += f"{exp[1].loc}\n{exp[1].str}\n"
         return output_str
-    elif isinstance(exp[1], Let):
-        output_str += f"{exp[0]}\n"
-        output_str += "let\n"
-        # output_str += f"{len(exp[1].Bindings)}\n"
-        for binding in exp[1].Bindings:
+    if isinstance(exp.ekind, Block):
+        # Create a new scope for the block
+        new_O = O.copy()
+        for expression in exp.ekind.Expressions:
+            _, new_O = type_check_exp(new_O, M, C, expression)  # Type check expressions within the block with updated O
+        return "Object", new_O  # Return "Object" (or any other appropriate value) and the updated O
+    elif isinstance(exp.ekind, Let):
+        new_O = O.copy()
+        for binding in exp.ekind.Bindings:
             if binding.Initializer:
-                output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
-            else:
-                output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n"
-        return output_str
+                initializer_type, new_O = type_check_exp(new_O, M, C, binding.Initializer)
+                if initializer_type == "SELF_TYPE":
+                    initializer_type = C.Name.str
+                if binding.Type.str != initializer_type:
+                    print(f"ERROR: {binding.Initializer.loc}: Type-Check: Let binding with wrong initializer type")
+                    exit(1)
+            new_O[binding.Name.str] = binding.Type.str
+        # Type check the expression with the updated O
+        return type_check_exp(new_O, M, C, exp.ekind.Expression)
     elif isinstance(exp[1], Case):
         output_str += f"{exp[0]}\n"
         output_str += "case\n"
