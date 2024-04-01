@@ -93,6 +93,9 @@ def main():
     else:
       raise(Exception(f"read_cool_class: inherits {i}"))
     features = read_list(read_feature)
+    print(f"CLASS:{cname.str}")
+    for feature in features:
+        print(f"{feature.Name.str}")
     return CoolClass(cname, inherits, features) 
 
   def read_feature (): 
@@ -144,7 +147,7 @@ def main():
     var = read_id()
     type_id = read_id()
     body_exp = read_exp()
-    return CaseBranch(var, type_id, body_exp)
+    return Expression(var.loc, CaseBranch(var, type_id, body_exp), None)
   
   
   def read_assign():
@@ -630,7 +633,7 @@ def main():
         if operand_type != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Negate operation with non-integer operand")
             exit(1)
-        return "Int", O, new_expression
+        return "Int", O, Expression(exp.loc, Negate(new_expression), "Int")
     elif isinstance(exp.ekind, Times):
         left_type, O, left_exp = type_check_exp(O, M, C, exp.ekind.Left)
         right_type, O, right_exp = type_check_exp(O, M, C, exp.ekind.Right)
@@ -723,9 +726,9 @@ def main():
         return exp.ekind.Identifier.str, O, Expression(exp.loc, New(exp.ekind.Identifier), exp.ekind.Identifier.str)
     elif isinstance(exp.ekind, CaseBranch):
         new_O = O.copy()
-        new_O[exp.ekind.Var.str] = exp.ekind.Type.str
-        case_type, O, case_exp = type_check_exp(new_O, M, C, exp.ekind.Body)
-        return case_type, O, Expression(exp.loc, CaseBranch(exp.ekind.Var, exp.ekind.Type, case_exp), case_type)
+        new_O[exp.ekind.Identifier.str] = exp.ekind.Type.str
+        case_type, O, case_exp = type_check_exp(new_O, M, C, exp.ekind.Expression)
+        return case_type, O, Expression(exp.loc, CaseBranch(exp.ekind.Identifier, exp.ekind.Type, case_exp), exp.ekind.Identifier.str)
     elif isinstance(exp.ekind, ID):
         if exp.ekind.str == "self":
             return "SELF_TYPE", O, Expression(exp.loc, exp.ekind, "SELF_TYPE")
@@ -864,8 +867,6 @@ def main():
         # Return the type "Bool", the original environment, and the new expression
         return "Bool", O, Expression(exp.loc, FalseConstant(), "Bool")
     elif isinstance(exp.ekind, Case):
-        print( "CASE \n")
-        print(exp)
         # Type check the expression being matched
         case_type, _, case_exp = type_check_exp(O, M, C, exp.ekind.Expression)
         if case_type == "SELF_TYPE":
@@ -880,12 +881,7 @@ def main():
         for branch in exp.ekind.Elements:
             new_O = O.copy()  # Create a new environment for each branch
             branch_type = None  # Variable to store the type of the branch body
-            
-            # Add the branch variable to the environment
-            new_O[branch[0].str] = branch[1].str
-            
-            # Type check the branch body
-            branch_type, new_O, branch_exp = type_check_exp(new_O, M, C, branch[2])
+            branch_type, new_O, branch_exp = type_check_exp(new_O, M, C, branch)
             branches.append(branch_exp)
             # Add the branch type to the list
             lowest_branch_type = find_least_common_ancestor(branch_type, lowest_branch_type )
@@ -896,7 +892,7 @@ def main():
             # exit(1)
         
         # The new expression will be the last expression in the case branch
-        new_exp = Expression(branch_exp.loc, Case(case_exp, branches), lowest_branch_type)
+        new_exp = Expression(exp.loc, Case(case_exp, branches), lowest_branch_type)
         
         return lowest_branch_type, new_O, new_exp 
     elif isinstance(exp.ekind, Assign):
@@ -956,10 +952,10 @@ def main():
             new_args.append(new_exp)
         if method_return_type == "SELF_TYPE":
             method_return_type = object_type
-        print( method_return_type + "METHOD RETURN TYPE \n")
+        # print( method_return_type + "METHOD RETURN TYPE \n")
         return method_return_type, O, Expression(exp.loc, StaticDispatch(new_exp, exp.ekind.Type, exp.ekind.MethodName, new_args), method_return_type)
     else:
-        print(f"UNKNOWN TYPE {exp} \n")
+        # print(f"UNKNOWN TYPE {exp} \n")
         return "", O, exp
 
 
@@ -1111,12 +1107,15 @@ def main():
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], Negate):
+        print("NEGATE FOUNDDDD" + exp.loc)
         output_str += "negate\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], If):
         output_str += "if\n"
         output_str += print_exp(exp[1].Predicate)
+        print("THEN BLOCK")
+        print(exp[1].Then)
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
         return output_str
@@ -1152,7 +1151,6 @@ def main():
         output_str += "case\n"
         output_str += print_exp(exp[1].Expression)
         output_str += f"{len(exp[1].Elements)}\n"
-        print(exp[1].Elements)
         for element in exp[1].Elements:
             output_str += print_exp(element)
         
@@ -1205,6 +1203,10 @@ def main():
     elif isinstance(exp[1], FalseConstant):
       output_str += "false\n"
       return output_str
+    elif isinstance(exp[1], CaseBranch ):
+        output_str += f"{exp.ekind.Identifier.loc}\n"
+        output_str += f"{exp.ekind.Type.str}\n"
+        output_str += print_exp(exp.ekind.Expression)
     # else:
     #     print(f"UNKOWN TYPE printing {exp} \n")
 
@@ -1232,14 +1234,19 @@ def main():
   
   def build_imp_map():
     im = {}
-    im['IO'] = IMObject("IO", 7, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nin_int\n0\nIO\n0\nInt\ninternal\nIO.in_int\nin_string\n0\nIO\n0\nString\ninternal\nIO.in_string\nout_int\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_int\nout_string\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_string\n")
-    im['Object'] = IMObject("Object", 3,  "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
+    im['IO'] = IMObject("IO", 7, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nin_int\n0\nIO\n0\nInt\ninternal\nIO.in_int\nin_string\n0\nIO\n0\nString\ninternal\nIO.in_string\nout_int\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_int\nout_string\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_string\n"])
+    im['Object'] = IMObject("Object", 3,  ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
 
-    im['Bool'] = IMObject("Bool", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
-    im['String'] = IMObject("String", 6, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\n")
-    im['Int'] = IMObject("Int", 3, "abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n")
+    im['Bool'] = IMObject("Bool", 3, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
+    im['String'] = IMObject("String", 6, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\n"])
+    im['Int'] = IMObject("Int", 3, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
     #im [class name] = [number of methods (including inheritance)][methods in order of printing(order is inheritance first, ordered by appearance)]
     for c in user_classes:
+      count = 0
+      methods=[]
+      new_methods = []
+      new_features = []
+      overwritten_methods = []
       if(c not in ['Object', 'IO']):
         output_string = ""
         for cl in ast:
@@ -1247,22 +1254,43 @@ def main():
                 class_obj = cl
                 break
         # print(class_obj.Name.str)
-        output_string = ""
-        count = 0
+        
         for feature in class_obj.Features:
+            print(cl.Name.str + feature.Name.str)
             if isinstance(feature, Method):
+                output_string = ""
                 count += 1
+                new_features.append(feature.Name.str)
                 output_string += feature.Name.str + "\n"
                 output_string += print_formals(feature.Formals)
                 output_string += class_obj.Name.str + "\n"
                 output_string += print_exp(feature.Body)
+                new_methods.append(output_string)
         if class_obj.Inherits:
+            methods = []
+            for method in im[class_obj.Inherits.str].Methods:
+                overwritten =False
+                for i in range(len(new_features)):
+                    #something to fix... 
+                    if method.startswith(new_features[i]+"\n"):
+                        print(f"{new_features[i]} is being overwritten by {method[:10]}")
+                        overwritten = True
+                        overwritten_methods.append(new_methods[i])
+                        new_methods.pop(i)
+                        count -=1
+                if not overwritten:
+                    methods.append(method)
             count += im[class_obj.Inherits.str].NumMethods
-            output_string = im[class_obj.Inherits.str].Methods + output_string
+            methods += overwritten_methods.copy()
+            methods += new_methods.copy()
         else:
+            methods = []
             count += im["Object"].NumMethods
-            output_string = im["Object"].Methods + output_string
-        im[class_obj.Name.str] = IMObject(class_obj.Name.str, count, output_string)
+            methods = im["Object"].Methods.copy()
+            methods += new_methods
+        im[class_obj.Name.str] = IMObject(class_obj.Name.str, count, methods)
+        # print(f"\n\n\nCLASS NAME{class_obj.Name}")
+        # print(methods)
     return im
   
   def print_formals(formals):
@@ -1277,8 +1305,10 @@ def main():
       implementation_map = "implementation_map\n"
       implementation_map += str(len(sorted_classes)) + "\n"
       for cls in sorted_classes:
-          implementation_map += im[cls].Name + "\n" + str(im[cls].NumMethods) + "\n" + im[cls].Methods
-         
+          implementation_map += im[cls].Name + "\n" + str(im[cls].NumMethods) + "\n"
+          for method in im[cls].Methods:
+              implementation_map += method
+
           # class_obj = None
           # for c in ast:
           #     if c.Name.str == cls:
@@ -1444,8 +1474,12 @@ def main():
             astString += ("true\n")
         elif isinstance(exp[1], FalseConstant):
             astString += ("false\n")
-        # else:
-            # print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
+        elif isinstance(exp[1], CaseBranch):
+            astString += f"{exp.ekind.Identifier.loc}\n"
+            astString += f"{exp.ekind.Type.str}\n"
+            print_expression(exp.ekind.Expression)
+        else:
+            print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
 
        
 
