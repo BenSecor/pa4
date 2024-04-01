@@ -118,7 +118,7 @@ def main():
   def read_formal ():
     fname = read_id()
     ftype = read_id().str
-    return (fname, ftype) 
+    return Formal(fname, ftype) 
 
   def read_binding():
     b = read()
@@ -273,8 +273,8 @@ def main():
   M =  construct_method_map()
 
   IO = CoolClass(ID("0", "IO"), ID("0", "Object"), 
-                 [Method(ID("0", "out_string"), [Formal(ID("0", "x"), ID("0", "String"))], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))),
-                    Method(ID("0", "out_int"), [Formal(ID("0", "x"), ID("0", "Int"))], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))), 
+                 [Method(ID("0", "out_string"), [Formal(ID("0", "x"), "String")], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))),
+                    Method(ID("0", "out_int"), [Formal(ID("0", "x"), "Int")], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))), 
                            Method(ID("0", "in_string"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))), 
                                   Method(ID("0", "in_int"), [], ID("0", "Int"), Expression("0", "String", StringConstant(""))), 
                                          Method(ID("0", "abort"), [], ID("0", "Object"), Expression("0", "String", StringConstant(""))), 
@@ -455,7 +455,7 @@ def main():
                 for formal in feature.Formals:
                     if isinstance(formal,Formal):
                       if formal.Type == "SELF_TYPE":
-                          print(f"ERROR: {formal.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
+                          print(f"ERROR: {formal.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
                           exit(1)
 
   def check_duplicate_attributes():
@@ -533,7 +533,7 @@ def main():
               if isinstance(feature, Method):
                   for formal in feature.Formals:
                     if isinstance(formal,Formal):
-                      if formal.Type.str not in all_classes+["SELF_TYPE"]:
+                      if formal.Type not in all_classes+["SELF_TYPE"]:
                           print(f"ERROR: {formal.Name.loc}: Type-Check: Undefined type {formal.Type.str} for parameter {formal.Name.str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
   
@@ -565,223 +565,109 @@ def main():
 
   parentMapString = create_parent_map(parent_map)
 
+  def find_least_common_ancestor(type1, type2):
+    parents1 = get_inheritances(type1)
+    parents2 = get_inheritances(type2)
+    
+    # Traverse the ancestors of type1
+    for parent in parents1:
+        # If an ancestor of type1 is also an ancestor of type2, it's the LCA
+        if parent in parents2:
+            return parent
+    
+    # If no common ancestor is found, return the topmost ancestor (e.g., Object)
+    return "Object"
+
+  def get_inheritances(type):
+    parents = []
+    # Add the type itself to the list of ancestors
+    parents.append(type)
+    # Traverse the inheritance hierarchy upwards
+    for cl in ast:
+        if cl.Name.str == type:
+            while cl.Inherits:
+                # Get the parent class of the current type
+                parents.append(cl.Inherits)
+                for cl2 in ast:
+                    if cl.Inherits and cl2.Name.str == cl.Inherits.str:
+                        cl = cl2
+                return parents
+            return parents
+    return parents
+  
   def type_check_exp(O, M, C, exp):
     if exp == []:
-      return ""
+        return "", O, exp
+
     if isinstance(exp.ekind, Integer):
-        return "Int"
+        return "Int", O, Expression(exp.loc, exp.ekind, "Int")
+
     elif isinstance(exp.ekind, Plus):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
+        left_type, O, left_exp = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O, right_exp = type_check_exp(O, M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Plus operation with non-integer operands")
             exit(1)
-        return "Int"
+        ekind = Plus(left_exp, right_exp)
+        exp = Expression(exp.loc, ekind, "Int")
+        return "Int", O, exp
+
     elif isinstance(exp.ekind, Minus):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
+        left_type, O, left_exp = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O, right_exp = type_check_exp(O, M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Minus operation with non-integer operands")
             exit(1)
-        return "Int"
-    elif isinstance(exp.ekind, Times):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
-            print(f"ERROR: {exp.loc}: Type-Check: Times operation with non-integer operands")
-            exit(1)
-        return "Int"
-    elif isinstance(exp.ekind, Divide):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
-            print(f"ERROR: {exp.loc}: Type-Check: Divide operation with non-integer operands")
-            exit(1)
-        return "Int"
-    elif isinstance(exp.ekind, LessThan):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
-            print(f"ERROR: {exp.loc}: Type-Check: LessThan operation with non-integer operands")
-            exit(1)
-        return "Bool"
-    elif isinstance(exp.ekind, LessThanOrEqual):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != "Int" or right != "Int":
-            print(f"ERROR: {exp.loc}: Type-Check: LessThanOrEqual operation with non-integer operands")
-            exit(1)
-        return "Bool"
-    elif isinstance(exp.ekind, Equal):
-        left = type_check_exp(O, M, C, exp.ekind.Left)
-        right = type_check_exp(O, M, C, exp.ekind.Right)
-        if left != right:
-            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types")
-            exit(1)
-        return "Bool"
-    elif isinstance(exp.ekind, Not):
-        operand = type_check_exp(O, M, C, exp.ekind.Expression)
-        if operand != "Bool":
-            print(f"ERROR: {exp.loc}: Type-Check: Not operation with non-boolean operand")
-            exit(1)
-        return "Bool"
+        ekind = Minus(left_exp, right_exp)
+        exp = Expression(exp.loc, ekind, "Int")
+        return "Int", O, exp
     elif isinstance(exp.ekind, Negate):
-        operand = type_check_exp(O, M, C, exp.ekind.Expression)
-        if operand != "Int":
+        operand_type, O, new_expression = type_check_exp(O, M, C, exp.ekind.Expression)
+        if operand_type != "Int":
             print(f"ERROR: {exp.loc}: Type-Check: Negate operation with non-integer operand")
             exit(1)
-        return "Int"
-    elif isinstance(exp.ekind, If):
-        predicate = type_check_exp(O, M, C, exp.ekind.Predicate)
-        if predicate != "Bool":
-            print(f"ERROR: {exp.loc}: Type-Check: If predicate is not of type Bool")
+        return "Int", O, new_expression
+    elif isinstance(exp.ekind, Times):
+        left_type, O, left_exp = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O, right_exp = type_check_exp(O, M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
+            print(f"ERROR: {exp.loc}: Type-Check: Times operation with non-integer operands")
             exit(1)
-        then_exp = type_check_exp(O, M, C, exp.ekind.Then)
-        else_exp = type_check_exp(O, M, C, exp.ekind.Else)
-        if then_exp == "SELF_TYPE" and else_exp == "SELF_TYPE":
-            return "SELF_TYPE"
-        elif then_exp == "SELF_TYPE":
-            return else_exp
-        elif else_exp == "SELF_TYPE":
-            return then_exp
-        elif then_exp != else_exp:
-            print(f"ERROR: {exp.loc}: Type-Check: If branches have different types")
+        ekind = Times(left_exp, right_exp)
+        exp = Expression(exp.loc, ekind, "Int")
+        return "Int", O, exp
+    elif isinstance(exp.ekind, Divide):
+        left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
+            print(f"ERROR: {exp.loc}: Type-Check: Divide operation with non-integer operands")
             exit(1)
-        return then_exp
-    elif isinstance(exp.ekind, Assign):
-        if exp.ekind.Identifier.str == "self":
-            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Cannot assign to self")
-            exit(1)
-        if exp.ekind.Identifier.str not in O:
-            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Undefined attribute {exp.Identifier.str}")
-            exit(1)
-        identifier_type = O[exp.ekind.Identifier.str]
-        expression_type = type_check_exp(O, M, C, exp.ekind.Expression)
-        if identifier_type != expression_type:
-            print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
-            exit(1)
-        return identifier_type
-    elif isinstance(exp.ekind, DynamicDispatch):
-        object_type = type_check_exp(O, M, C, exp.ekind.Object)
-        if object_type == "SELF_TYPE":
-            object_type = C.Name.str
-        if object_type not in all_classes:
-            print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
-            exit(1)
-        if exp.ekind.MethodName.str not in M:
-            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.MethodName.str} in class {object_type}")
-            exit(1)
-        method_formals, method_return_type = M[exp.ekind.MethodName.str]
-        if len(exp.ekind.ArgsList) != len(method_formals):
-            print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
-            exit(1)
-        for arg, formal in zip(exp.ekind.ArgsList, method_formals):
-            arg_type = type_check_exp(O, M, C, arg)
-            if arg_type == "SELF_TYPE":
-                arg_type = C.Name.str
-            if arg_type != formal[1].str:
-                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
-                exit(1)
-        return method_return_type
-    elif isinstance(exp.ekind, SelfDispatch):
-        if exp.ekind.MethodName.str not in M:
-            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {C.Name.str}")
-            exit(1)
-        method_formals, method_return_type = M[exp.ekind.MethodName.str]
-        if len(exp.ekind.ArgsList) != len(method_formals):
-            print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
-            exit(1)
-        for arg, formal in zip(exp.ekind.ArgsList, method_formals):
-            arg_type = type_check_exp(O, M, C, arg)
-            if arg_type == "SELF_TYPE":
-                arg_type = C.Name.str
-            if arg_type != formal[1].str:
-                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.MethodName.str} called with wrong argument type")
-                exit(1)
-        return method_return_type
-    elif isinstance(exp.ekind, StaticDispatch):
-        object_type = type_check_exp(O, M, C, exp.ekind.Object)
-        if object_type == "SELF_TYPE":
-            object_type = C.Name.str
-        if object_type not in all_classes:
-            print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
-            exit(1)
-        if exp.ekind.Type.str not in all_classes:
-            print(f"ERROR: {exp.ekind.Type.loc}: Type-Check: Undefined type {exp.ekind.Type.str}")
-            exit(1)
-        if exp.ekind.MethodName.str not in M[exp.ekind.Type.str]:
-            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {exp.Type.str}")
-            exit(1)
-        method_formals, method_return_type = M[exp.ekind.Type.str][exp.ekind.MethodName.str]
-        if len(exp.ekind.ArgsList) != len(method_formals):
-            print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
-            exit(1)
-        for arg, formal in zip(exp.ekind.ArgsList, method_formals):
-            arg_type = type_check_exp(O, M, C, arg)
-            if arg_type == "SELF_TYPE":
-                arg_type = C.Name.str
-            if arg_type != formal[1].str:
-                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
-                exit(1)
-        return method_return_type
-    elif isinstance(exp.ekind, TrueConstant):
-        return "Bool"
-    elif isinstance(exp.ekind, FalseConstant):
-        return "Bool"
-    elif isinstance(exp.ekind, Let):
-        new_O = O.copy()
-        for binding in exp.ekind.Bindings:
-            if binding.Initializer:
-                initializer_type = type_check_exp(O, M, C, binding.Initializer)
-                if initializer_type == "SELF_TYPE":
-                    initializer_type = C.Name.str
-                if binding.Type.str != initializer_type:
-                    print(f"ERROR: {binding.Initializer.loc}: Type-Check: Let binding with wrong initializer type")
-                    exit(1)
-            new_O[binding.Name.str] = binding.Type.str
-        return type_check_exp(new_O, M, C, exp.ekind.Expression)
-    elif isinstance(exp.ekind, Case):
-        case_type = type_check_exp(O, M, C, exp.ekind.Expression)
-        if case_type == "SELF_TYPE":
-            case_type = C.Name.str
-        if case_type not in all_classes:
-            print(f"ERROR: {exp.ekind.Expression.loc}: Type-Check: Undefined type {case_type}")
-            exit(1)
-        branch_types = []
-        for branch in exp.ekind.Elements:
-            new_O = O.copy()
-            new_O[branch[0].str] = branch[1].str
-            branch_type = type_check_exp(new_O, M, C, branch[2])
-            branch_types.append(branch_type)
-        if len(set(branch_types)) > 1:
-            ## need to do the branch type as a join of the branches
-            print(f"ERROR: {branch_types} {exp.loc}: Type-Check: Case branches have different types")
-            # exit(1)
-        return branch_types[0]
-    elif isinstance(exp.ekind, While):
-        predicate = type_check_exp(O, M, C, exp.ekind.Predicate)
-        if predicate != "Bool":
-            print(f"ERROR: {exp.ekind.Predicate.loc}: Type-Check: While predicate is not of type Bool")
-            exit(1)
-        body = type_check_exp(O, M, C, exp.ekind.Body)
-        return "Object"
+        new_expr = Expression(exp.loc, Divide(Expression(left_expr.loc, left_expr.ekind, left_type),
+                        Expression(right_expr.loc, right_expr.ekind, right_type)), "Int")
+        return "Int", O_right, new_expr
     elif isinstance(exp.ekind, IsVoid):
-        expression = type_check_exp(O, M, C, exp.ekind.Expression)
-        return "Bool"
+        expression_type, O, expression_exp = type_check_exp(O, M, C, exp.ekind.Expression)
+        exp = Expression(exp.loc, expression_exp, "Bool")
+        return "Bool", O, exp
+
     elif isinstance(exp.ekind, Attribute):
-      #check M so that the exp mathing the corresponding attributre
+        # Check M so that the exp matches the corresponding attribute
         if exp.Name not in M[C.Name.str]:
             print(f"ERROR: {exp.ekind.Name.loc}: Type-Check: Attribute {exp.ekind.Name.str} not defined in class {C.Name.str}")
             exit(1)
         attribute_type = M[C.Name.str][exp.ekind.Name.str]
         if exp.ekind.Initializer:
-            initializer_type = type_check_exp(O, M, C, exp.ekind.Initializer)
+            initializer_type, O, initializer_exp = type_check_exp(O, M, C, exp.ekind.Initializer)
             if initializer_type != attribute_type:
                 print(f"ERROR: {exp.ekind.Initializer.loc}: Type-Check: Attribute {exp.Name.str} has wrong type")
                 exit(1)
-        return attribute_type                                                                         
+        # print(f"\nassigned {exp.ekind.Name.str} = {exp.ekind.Type.str}\n")
+        O[exp.ekind.Name.str] = exp.ekind.Type.str
+        exp = Expression(exp.loc,  Attribute(exp.ekind.Name, attribute_type, initializer_exp), attribute_type)
+        return attribute_type, O, exp
+
     elif isinstance(exp.ekind, Method):
-        #check M so that the exp matches the data 
+        # Check M so that the exp matches the data
         if exp.Name not in M[C.Name.str]:
             print(f"ERROR: {exp.ekind.Name.loc}: Type-Check: Method {exp.ekind.Name.str} not defined in class {C.Name.str}")
             exit(1)
@@ -793,82 +679,345 @@ def main():
             if formal[1].str != method_formal[1].str:
                 print(f"ERROR: {formal[1].loc}: Type-Check: Method {exp.ekind.Name.str} has wrong parameter type")
                 exit(1)
-        body_type = type_check_exp(O, M, C, exp.Body)
+        body_type, O, body_exp = type_check_exp(O, M, C, exp.ekind.Body)
         if body_type != method_return_type:
             print(f"ERROR: {exp.ekind.Body.loc}: Type-Check: Method {exp.ekind.Name.str} has wrong return type")
             exit(1)
+        body = Method(exp.ekind.Name, exp.ekind.Formals, body_type, body_exp)
+        exp = Expression(exp.loc, body, method_return_type)
+        return method_return_type, O, exp
+    elif isinstance(exp.ekind, While):
+      # Type check the predicate expression
+        predicate_type, O_predicate, predicate_exp = type_check_exp(O, M, C, exp.ekind.Predicate)
+        
+        # Check if the predicate expression is of type Bool
+        if predicate_type != "Bool":
+            print(f"ERROR: {exp.ekind.Predicate.loc}: Type-Check: While predicate is not of type Bool it is of type {predicate_type}")
+            exit(1)
+        
+        # Type check the body expression
+        body_type, O_body, body_exp = type_check_exp(O_predicate, M, C, exp.ekind.Body)
+        
+        # Return the type "Object" (as while loops in Cool always return Object), updated environment, and new expression
+        return "Object", O_body, Expression(exp.loc, While(predicate_exp, body_exp), "Object")
     elif isinstance(exp.ekind, Block):
+        #NEED to FIX this 
+        block_type = "Object"
+        expressions = []
         for expression in exp.ekind.Expressions:
-            type_check_exp(O, M, C, expression)
-        return "Object"
+            expression_type, O, expression_exp = type_check_exp(O, M, C, expression)
+            block_type = expression_type
+            expressions.append(expression_exp)
+        return block_type, O, Expression(exp.loc, Block(expressions), block_type)
+
     elif isinstance(exp.ekind, New):
         if exp.ekind.Identifier.str not in all_classes:
             print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Undefined type {exp.ekind.Identifier.str}")
             exit(1)
-        return exp.ekind.Identifier.str
+        return exp.ekind.Identifier.str, O, Expression(exp.loc, exp.ekind, exp.ekind.Identifier.str)
+
     elif isinstance(exp.ekind, ID):
         if exp.ekind.str == "self":
-            return "SELF_TYPE"
+            return "SELF_TYPE", O, Expression(exp.loc, exp.ekind, "SELF_TYPE")
         if exp.ekind.str not in O:
-            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.ekind.str}")
+            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.ekind.str} {exp}")
             exit(1)
-        return O[exp.ekind.str]
+        return O[exp.ekind.str], O, Expression(exp.loc, exp.ekind, O[exp.ekind.str])
+
     elif isinstance(exp.ekind, StringConstant):
-        return "String"
+        return "String", O, Expression(exp.loc, exp.ekind, "String")
+
     elif isinstance(exp.ekind, Tilde):
-        expression = type_check_exp(O, M, C, exp.ekind.Expression)
-        if expression != "Int":
+        expression_type, O, expression_exp = type_check_exp(O, M, C, exp.ekind.Expression)
+        if expression_type != "Int":
             print(f"ERROR: {exp.ekind.Expression.loc}: Type-Check: Tilde operation with non-integer operand")
             exit(1)
-        return "Int"
+        return "Int", O, Expression(exp.loc, expression_exp, "Int")
+    elif isinstance(exp.ekind, SelfDispatch):
+        if exp.ekind.MethodName.str not in M[C.Name.str]:
+            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {C.Name.str}")
+            exit(1)
+        method_formals, method_return_type = M[C.Name.str][exp.ekind.MethodName.str]
+        if len(exp.ekind.ArgsList) != len(method_formals):
+            print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
+            exit(1)
+        new_args = []
+        for arg, formal in zip(exp.ekind.ArgsList, method_formals):
+            arg_type, O, new_arg_expression = type_check_exp(O, M, C, arg)
+            if arg_type == "SELF_TYPE":
+                arg_type = C.Name.str
+            if arg_type != formal[1]:
+                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.MethodName.str} called with wrong argument type")
+                exit(1)
+            new_args.append(new_arg_expression)
+        updated_expression = SelfDispatch(exp.ekind.MethodName, new_args)
+        return method_return_type, O, Expression(exp.loc, updated_expression, method_return_type)
+    elif isinstance(exp.ekind, Let):
+        new_O = O.copy()
+        for binding in exp.ekind.Bindings:
+            # Add the binding to O
+            new_O[binding.Name.str] = binding.Type.str
+            # Perform type checking for the initializer if present
+            if binding.Initializer:
+                initializer_type, O , build_Int = type_check_exp(O, M, C, binding.Initializer)
+                # Check if the initializer type matches the declared type
+                if initializer_type != binding.Type.str:
+                    # Raise an error if types do not match
+                    print("BINFING ERROR\n")
+                    exit(1)
+                # type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
+                # return type, new_O, Expression(exp.loc, Let(build_Int, expression), type)
+        type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
+        return type, new_O, Expression(exp.loc, Let(exp.ekind.Bindings, expression), type)
+    elif isinstance(exp.ekind, TrueConstant):
+        # Return the type "Bool", the original environment, and the new expression
+        return "Bool", O, Expression(exp.loc, TrueConstant(), "Bool")
+    elif isinstance(exp.ekind, If):
+        predicate_type, O_pred, pred_expr = type_check_exp(O, M, C, exp.ekind.Predicate)
+        if predicate_type != "Bool":
+            print(f"ERROR: {exp.ekind.Predicate.loc}: Type-Check: If predicate is not of type Bool")
+            exit(1)
+        then_type, O_then, then_expr = type_check_exp(O_pred.copy(), M, C, exp.ekind.Then)
+        else_type, O_else, else_expr = type_check_exp(O_pred.copy(), M, C, exp.ekind.Else)
+        if then_type == "SELF_TYPE" and else_type == "SELF_TYPE":
+            new_type = "SELF_TYPE" 
+        elif then_type == "SELF_TYPE":
+            then_type = C.Name.str
+        elif else_type == "SELF_TYPE":
+            new_type = C.Name.str
+        if then_type == else_type:
+            new_type = then_type
+        else:
+            new_type = find_least_common_ancestor(then_type, else_type)
+        new_expr = If(pred_expr,
+                    then_expr,
+                    else_expr)
+        # print(f"IF TYPES, {new_type}, {then_type}, {else_type} \n")
+        return new_type, O, Expression(exp.loc, new_expr, new_type)
+    elif isinstance(exp.ekind, LessThan):
+        left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
+            print(f"ERROR: {exp.loc}: Type-Check: LessThan operation with non-integer operands")
+            exit(1)
+        new_expr = Expression(exp.loc,LessThan(Expression(left_expr.loc, left_expr.ekind, left_type),
+                            Expression(right_expr.loc, right_expr.ekind, right_type)), "Bool")
+        return "Bool", O_right, new_expr
+    elif isinstance(exp.ekind, DynamicDispatch):
+        object_type, O_obj, object_expr = type_check_exp(O, M, C, exp.ekind.Object)
+        if object_type == "SELF_TYPE":
+            object_type = C.Name.str
+        if object_type not in all_classes:
+            print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
+            # exit(1)
+        if exp.ekind.MethodName.str not in M[object_type]:
+            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {object_type}")
+            exit(1)
+        method_formals, method_return_type = M[object_type][exp.ekind.MethodName.str]
+        new_args_list = []
+        O_arg = O_obj.copy()
+        for arg in exp.ekind.ArgsList:
+            arg_type, O_arg, arg_expr = type_check_exp(O_arg, M, C, arg)
+            new_args_list.append(Expression(arg_expr.loc, arg_expr.ekind, arg_type))
+        new_expr = Expression(exp.loc, DynamicDispatch(Expression(object_expr.loc, object_expr.ekind, object_type),
+                                exp.ekind.MethodName,
+                                new_args_list), method_return_type)
+        return method_return_type, O_arg, new_expr
+    elif isinstance(exp.ekind, LessThanOrEqual):
+        left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
+        if left_type != "Int" or right_type != "Int":
+            print(f"ERROR: {exp.loc}: Type-Check: LessThanOrEqual operation with non-integer operands")
+            exit(1)
+        new_expr = Expression(exp.loc, LessThanOrEqual(Expression(left_expr.loc, left_expr.ekind, left_type),
+                                Expression(right_expr.loc, right_expr.ekind, right_type)), "Bool")
+        return "Bool", O_right, new_expr
+    elif isinstance(exp.ekind, Equal):
+        left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
+        right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
+        if left_type != right_type:
+            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types")
+            exit(1)
+        new_expr = Expression(exp.loc,Equal(Expression(left_expr.loc, left_expr.ekind, left_type),
+                        Expression(right_expr.loc, right_expr.ekind, right_type)), "Bool")
+        return "Bool", O_right, new_expr
+    elif isinstance(exp.ekind, FalseConstant):
+        # Return the type "Bool", the original environment, and the new expression
+        return "Bool", O, Expression(exp.loc, FalseConstant(), "Bool")
+    elif isinstance(exp.ekind, Case):
+        # Type check the expression being matched
+        case_type, _, case_exp = type_check_exp(O, M, C, exp.ekind.Expression)
+        if case_type == "SELF_TYPE":
+            case_type = C.Name.str  # Substitute SELF_TYPE with the current class name
+        if case_type not in all_classes:
+            print(f"ERROR: {exp.ekind.Expression.loc}: Type-Check: Undefined type {case_type}")
+            exit(1)
+        
+        lowest_branch_type = None  # List to store the types of case branches
+        
+        # Iterate through case branches
+        for branch in exp.ekind.Elements:
+            new_O = O.copy()  # Create a new environment for each branch
+            branch_type = None  # Variable to store the type of the branch body
+            
+            # Add the branch variable to the environment
+            new_O[branch[0].str] = branch[1].str
+            
+            # Type check the branch body
+            branch_type, new_O, branch_exp = type_check_exp(new_O, M, C, branch[2])
+            
+            # Add the branch type to the list
+            lowest_branch_type = find_least_common_ancestor(branch_type, lowest_branch_type )
+        
+        # Check if all branch types are consistent
+        # if len(set(branch_types)) > 1:
+            # print(f"ERROR: {exp.loc}: Type-Check: Case branches have different types")
+            # exit(1)
+        
+        # The new expression will be the last expression in the case branch
+        new_exp = Expression(branch_exp.loc, branch_exp.ekind, lowest_branch_type)
+        
+        return case_type, new_O, new_exp 
+    elif isinstance(exp.ekind, Assign):
+        # Check if assigning to "self"
+        if exp.ekind.Identifier.str == "self":
+            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Cannot assign to self")
+            exit(1)
+        
+        # Check if the attribute is defined
+        if exp.ekind.Identifier.str not in O:
+            print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Undefined attribute {exp.ekind.Identifier.str}")
+            exit(1)
+        
+        # Get the type of the attribute from the environment
+        identifier_type = O[exp.ekind.Identifier.str]
+        
+        # Type check the assigned expression
+        expression_type, O, new_exp = type_check_exp(O, M, C, exp.ekind.Expression)
+        
+        if identifier_type != expression_type:
+            identifier_type = find_least_common_ancestor(identifier_type, expression_type)
+        # Check if the assigned expression type matches the attribute type
+        # if identifier_type != expression_type:
+        #     print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
+        #     exit(1)
+        
+        # Return the type, updated environment, and new expression
+        return identifier_type, O, Expression(exp.loc, Assign(exp.ekind.Identifier, new_exp), expression_type)
+    elif isinstance(exp.ekind, StaticDispatch):
+        object_type = type_check_exp(O, M, C, exp.ekind.Object)
+        if object_type == "SELF_TYPE":
+            object_type = C.Name.str
+        # if object_type not in all_classes:
+        #     print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
+        #     exit(1)
+        if exp.ekind.Type.str not in all_classes:
+            print(f"ERROR: {exp.ekind.Type.loc}: Type-Check: Undefined type {exp.ekind.Type.str}")
+            exit(1)
+        if exp.ekind.MethodName.str not in M[exp.ekind.Type.str]:
+            print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {exp.Type.str}")
+            exit(1)
+        method_formals, method_return_type = M[exp.ekind.Type.str][exp.ekind.MethodName.str]
+        if len(exp.ekind.ArgsList) != len(method_formals):
+            print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
+            exit(1)
+        new_args = []
+        for arg, formal in zip(exp.ekind.ArgsList, method_formals):
+            arg_type, O, new_exp = type_check_exp(O, M, C, arg)
+            if arg_type == "SELF_TYPE":
+                arg_type = C.Name.str
+            if arg_type != formal[1]:
+                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
+                exit(1)
+            new_args.append(new_exp)
+        return method_return_type, O, Expression(exp.loc, StaticDispatch(exp.ekind.Object, exp.ekind.Type, exp.ekind.MethodName, new_args), method_return_type)
     else:
-      print(f"UNKOWN TYPE {exp} \n")
-      return ""
-      
+        print(f"UNKNOWN TYPE {exp} \n")
+        return "", O, exp
+
+
   def generate_O(class_node):
     # Generates O to hold all instance variables in the class
     # O[name] = Type
     O = {}
     for feature in class_node.Features:
         if isinstance(feature, Attribute):
-            O[feature.Name] = feature.Type
+            O[feature.Name.str] = feature.Type.str
+    # print(O)
     return O
 
   def generate_M(ast):
     # Builds a M dictionary for the entire program to help type check method calls
     # M[Class][Method_Name] = (Args, ReturnType)
-    M = {}
-    for class_node in ast:
-        class_methods = {}
-        for feature in class_node.Features:
-            if isinstance(feature, Method):
-                method_name = feature.Name
-                arg_types = [(formal.Name, formal.Type) for formal in feature.Formals]
-                return_type = feature.ReturnType
-                class_methods[method_name] = (arg_types, return_type)
-        M[class_node.Name] = class_methods
+    M = {
+        "Object": {
+            "abort": ([], "Object"),
+            "type_name": ([], "String"),
+            "copy": ([], "SELF_TYPE")
+        },
+        "IO": {
+            "out_string": ([(None, "String")], "SELF_TYPE"),
+            "out_int": ([(None, "Int")], "SELF_TYPE"),
+            "in_string": ([], "String"),
+            "in_int": ([], "Int")
+        },
+        "String": {
+            "length": ([], "Int"),
+            "concat": ([(None, "String")], "String"),
+            "substr": ([(None, "Int"), (None, "Int")], "String")
+        },
+        "Bool": {},
+        "Int": {}
+    }
+    for cl in user_classes:
+        for class_node in ast:
+            if class_node.Name.str == cl:
+                class_methods = {}
+                if class_node.Inherits:
+                    class_methods = M[class_node.Inherits.str]
+                else:
+                    class_methods = M["Object"]
+                for feature in class_node.Features:
+                    if isinstance(feature, Method):
+                        arg_types = []
+                        method_name = feature.Name.str
+                        for formal in feature.Formals:
+                            if formal != []:
+                                # print(formal)
+                                arg_types.append((formal.Name.str, formal.Type))
+                        return_type = feature.ReturnType.str
+                        class_methods[method_name] = (arg_types, return_type)
+                M[class_node.Name.str] = class_methods
+    # print(M)
     return M
     
     
   
-  def check_method_expressions():
-     M = generate_M(ast)
-     for cl in ast:
-        #setup dictionary O
+  def check_method_expressions(ast):
+    M = generate_M(ast)
+    new_ast = []
+    for cl in ast:
+        # Setup dictionary O
         O = generate_O(cl)
-        # Object_Identifiers to Types
-        #NEED TO ADD THE ATTR ININT type checking and the method type checking
-        # print("Attribute CHECKING \n\n\n")
+        new_features = []
         for feature in cl.Features:
-           if isinstance(feature, Attribute):
-              if feature.Initializer:
-                type_check_exp(O, M, cl, feature.Initializer)
-        #check all the methods using O, M, C
-        # print("METHOD CHECKING \n\n\n")
-        for feature in cl.Features:
-            if isinstance(feature, Method):
-                type_check_exp(O, M, cl, feature.Body)
-  
+            if isinstance(feature, Attribute) and feature.Initializer:
+                expression_type, _, exp = type_check_exp(O, M, cl, feature.Initializer)
+                new_feature = Attribute(feature.Name, feature.Type, exp)
+                new_features.append(new_feature)
+            elif isinstance(feature, Method):
+                new_O = O.copy()
+                for formal in feature.Formals:
+                    O[formal[0].str] = formal[1]
+                expression_type, O, exp = type_check_exp(O, M, cl, feature.Body)
+                new_feature = Method(feature.Name, feature.Formals, feature.ReturnType, exp)
+                new_features.append(new_feature)
+                O = new_O
+            else:
+                new_features.append(feature)
+        new_cl = CoolClass(cl.Name, cl.Inherits, new_features)
+        new_ast.append(new_cl)
+    return new_ast
   #Add checks for negative test cases
   check_self_and_self_type()
   check_duplicate_attributes()
@@ -876,111 +1025,98 @@ def main():
   check_method_parameter_redefinition()
   check_undefined_attribute_types()
   check_undefined_parameter_types()
-  check_method_expressions()
+  new_ast = check_method_expressions(ast)
+  ast = new_ast
 
   def print_exp(exp):
     output_str = ""
+    output_str += f"{exp[0]}\n"
+    if exp.Type:
+        output_str += exp.Type +"\n"
+    else:
+        print(exp)
+        output_str += "No EXP\n"
     if isinstance(exp[1], Integer):
-        output_str += f"{exp[0]}\n"
-        output_str += "Int\n"
         output_str += "integer\n"
         output_str += f"{exp[1].Integer}\n"
         return output_str
     elif isinstance(exp[1], Plus):
-        output_str += f"{exp[0]}\n"
         output_str += "plus\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], Minus):
-        output_str += f"{exp[0]}\n"
         output_str += "minus\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], Times):
-        output_str += f"{exp[0]}\n"
         output_str += "times\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], Divide):
-        output_str += f"{exp[0]}\n"
         output_str += "divide\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], LessThan):
-        output_str += f"{exp[0]}\n"
         output_str += "lt\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], LessThanOrEqual):
-        output_str += f"{exp[0]}\n"
         output_str += "le\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], Equal):
-        output_str += f"{exp[0]}\n"
         output_str += "eq\n"
         output_str += print_exp(exp[1].Left)
         output_str += print_exp(exp[1].Right)
         return output_str
     elif isinstance(exp[1], Not):
-        output_str += f"{exp[0]}\n"
         output_str += "not\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], Negate):
-        output_str += f"{exp[0]}\n"
         output_str += "negate\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], If):
-        output_str += f"{exp[0]}\n"
         output_str += "if\n"
         output_str += print_exp(exp[1].Predicate)
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
         return output_str
+    elif isinstance(exp[1], Block):
+        output_str += "block\n"
+        output_str += f"{len(exp[1].Expressions)}\n"
+        for expression in exp[1].Expressions:
+            output_str += print_exp(expression)
+        return output_str
     elif isinstance(exp[1], New):
-        output_str += f"{exp[0]}\n"
         output_str += "new\n"
         output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
         return output_str
     elif isinstance(exp[1], IsVoid):
-        output_str += f"{exp[0]}\n"
         output_str += "isvoid\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], ID):
-        output_str += f"{exp[0]}\n"
         output_str += "identifier\n"
         output_str += f"{exp[1].loc}\n{exp[1].str}\n"
         return output_str
-    if isinstance(exp.ekind, Block):
-        # Create a new scope for the block
-        new_O = O.copy()
-        for expression in exp.ekind.Expressions:
-            _, new_O = type_check_exp(new_O, M, C, expression)  # Type check expressions within the block with updated O
-        return "Object", new_O  # Return "Object" (or any other appropriate value) and the updated O
-    elif isinstance(exp.ekind, Let):
-        new_O = O.copy()
+    elif isinstance(exp[1], Let):
+        output_str += "let\n"
+        output_str += f"{len(exp[1].Bindings)}\n"
         for binding in exp.ekind.Bindings:
             if binding.Initializer:
-                initializer_type, new_O = type_check_exp(new_O, M, C, binding.Initializer)
-                if initializer_type == "SELF_TYPE":
-                    initializer_type = C.Name.str
-                if binding.Type.str != initializer_type:
-                    print(f"ERROR: {binding.Initializer.loc}: Type-Check: Let binding with wrong initializer type")
-                    exit(1)
-            new_O[binding.Name.str] = binding.Type.str
-        # Type check the expression with the updated O
-        return type_check_exp(new_O, M, C, exp.ekind.Expression)
+                output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
+            else:
+                output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n"
+        return output_str
     elif isinstance(exp[1], Case):
-        output_str += f"{exp[0]}\n"
         output_str += "case\n"
         output_str += print_exp(exp[1].Expression)
         output_str += f"{len(exp[1].Elements)}\n"
@@ -990,23 +1126,19 @@ def main():
              output_str += print_exp(element[2])
         return output_str
     elif isinstance(exp[1], Tilde):
-        output_str += f"{exp[0]}\n"
         output_str += "tilde\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], StringConstant):
-        output_str += f"{exp[0]}\n"
         output_str += "string\n"
         output_str += f"{exp[1].Value}\n"
         return output_str
     elif isinstance(exp[1], Assign):
-        output_str += f"{exp[0]}\n"
         output_str += "assign\n"
         output_str += f"{exp[1].Identifier.loc}\n{exp[1].Identifier.str}\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], DynamicDispatch):
-        output_str += f"{exp[0]}\n"
         output_str += "dynamic_dispatch\n"
         output_str += print_exp(exp[1].Object)
         output_str += f"{exp[1].MethodName.loc}\n{exp[1].MethodName.str}\n"
@@ -1015,7 +1147,6 @@ def main():
             output_str += print_exp(arg)
         return output_str
     elif isinstance(exp[1], StaticDispatch):
-        output_str += f"{exp[0]}\n"
         output_str += "static_dispatch\n"
         output_str += print_exp(exp[1].Object)
         output_str += f"{exp[1].Type.loc}\n{exp[1].Type.str}\n"
@@ -1025,7 +1156,6 @@ def main():
             output_str += print_exp(arg)
         return output_str
     elif isinstance(exp[1], SelfDispatch):
-        output_str += f"{exp[0]}\n"
         output_str += "self_dispatch\n"
         output_str += f"{exp[1].MethodName.loc}\n{exp[1].MethodName.str}\n"
         output_str += f"{len(exp[1].ArgsList)}\n"
@@ -1033,21 +1163,18 @@ def main():
             output_str += print_exp(arg)
         return output_str
     elif isinstance(exp[1], While):
-      output_str += f"{exp[0]}\n"
       output_str += "while\n"
       output_str += print_exp(exp[1].Predicate)
       output_str += print_exp(exp[1].Body)
       return output_str
     elif isinstance(exp[1], TrueConstant):
-      output_str += f"{exp[0]}\n"
       output_str += "true\n"
       return output_str
     elif isinstance(exp[1], FalseConstant):
-      output_str += f"{exp[0]}\n"
       output_str += "false\n"
       return output_str
-    else:
-        print(f"UNKOWN TYPE printing {exp} \n")
+    # else:
+        # print(f"UNKOWN TYPE printing {exp} \n")
 
     return output_str
 
@@ -1083,12 +1210,11 @@ def main():
     for c in user_classes:
       if(c not in ['Object', 'IO']):
         output_string = ""
-        method_count = 0 
         for cl in ast:
             if cl.Name.str == c:
                 class_obj = cl
                 break
-        print(class_obj.Name.str)
+        # print(class_obj.Name.str)
         output_string = ""
         count = 0
         for feature in class_obj.Features:
@@ -1101,6 +1227,9 @@ def main():
         if class_obj.Inherits:
             count += im[class_obj.Inherits.str].NumMethods
             output_string = im[class_obj.Inherits.str].Methods + output_string
+        else:
+            count += im["Object"].NumMethods
+            output_string = im["Object"].Methods + output_string
         im[class_obj.Name.str] = IMObject(class_obj.Name.str, count, output_string)
     return im
   
@@ -1135,7 +1264,7 @@ def main():
   class_map = "class_map\n"
   # sort classes alphabetically
   sorted_classes = sorted(all_classes)
-  print(sorted_classes)
+#   print(sorted_classes)
   class_map += str(len(sorted_classes)) + "\n"
   for cls in sorted_classes:
       global attr_count
@@ -1171,16 +1300,12 @@ def main():
   def print_expression(exp):
         global astString
         # check by ekind
-        astString += (exp[0] + "\n")
+        astString += exp[0] + "\n"
         # output the type of the expression by calling the type_check_exp function
-        O = {}
-        M = {}
-        C = {}
-        astString += (type_check_exp(O, M, C, exp) + "\n")
-
-
-
-        # astString += (str(exp[2]) + "\n")
+        if exp.Type:
+            astString += exp.Type + "\n"
+        else :
+            astString += "NONE VERY BAD\n"
 
         if isinstance(exp[1], Integer):
             astString += ("integer\n")
@@ -1287,8 +1412,8 @@ def main():
             astString += ("true\n")
         elif isinstance(exp[1], FalseConstant):
             astString += ("false\n")
-        else:
-            print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
+        # else:
+            # print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
 
        
 
@@ -1298,13 +1423,13 @@ def main():
       # if let_binding_no_init
       if attr.Initializer == None:
           astString += ("let_binding_no_init\n")
-          print_identifier(ast.Name)
-          print_identifier(ast.Type)
+          print_identifier(attr.Name)
+          print_identifier(attr.Type)
       else:
           astString += ("let_binding_init\n")
-          print_identifier(ast.Name)
-          print_identifier(ast.Type)
-          print_expression(ast.Initializer)
+          print_identifier(attr.Name)
+          print_identifier(attr.Type)
+          print_expression(attr.Initializer)
 
 
   # This function prints a case element
@@ -1335,14 +1460,16 @@ def main():
             print_list(feature.Formals, print_formal)
             print_identifier(feature.ReturnType)
             print_expression(feature.Body)
-      else:
-            print(f"UNKOWN TYPE AST STUFF printing {ast} \n")
+    #   else:
+
+            # print(f"UNKOWN TYPE AST STUFF printing {ast} \n")
 
   # This function prints a formal
   def print_formal(formal):
         global astString
+        # print(formal)
         print_identifier(formal[0])
-        print_identifier(formal[1])
+        astString += formal[1]+"\n"
 
 
   # This function prints a list of elements starting with the number of elements
@@ -1362,7 +1489,7 @@ def main():
   # This function prints a class whether it inherits or not
   def print_class(cls):
       global astString
-      print("CLASS NAME: " + cls.Name.str)
+    #   print("CLASS NAME: " + cls.Name.str)
       if cls.Name.str != "IO" and cls.Name.str != "Object":
         if cls.Inherits:
                 print_identifier(cls.Name)
