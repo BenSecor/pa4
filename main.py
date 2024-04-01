@@ -722,7 +722,10 @@ def main():
             exit(1)
         return exp.ekind.Identifier.str, O, Expression(exp.loc, New(exp.ekind.Identifier), exp.ekind.Identifier.str)
     elif isinstance(exp.ekind, CaseBranch):
-        
+        new_O = O.copy()
+        new_O[exp.ekind.Var.str] = exp.ekind.Type.str
+        case_type, O, case_exp = type_check_exp(new_O, M, C, exp.ekind.Body)
+        return case_type, O, Expression(exp.loc, CaseBranch(exp.ekind.Var, exp.ekind.Type, case_exp), case_type)
     elif isinstance(exp.ekind, ID):
         if exp.ekind.str == "self":
             return "SELF_TYPE", O, Expression(exp.loc, exp.ekind, "SELF_TYPE")
