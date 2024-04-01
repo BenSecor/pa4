@@ -144,7 +144,7 @@ def main():
     var = read_id()
     type_id = read_id()
     body_exp = read_exp()
-    return (var, type_id, body_exp)
+    return CaseBranch(var, type_id, body_exp)
   
   
   def read_assign():
@@ -566,15 +566,17 @@ def main():
   parentMapString = create_parent_map(parent_map)
 
   def find_least_common_ancestor(type1, type2):
+    if type1 == None:
+        return type2
+    if type2 == None:
+        return type1
     parents1 = get_inheritances(type1)
     parents2 = get_inheritances(type2)
-    
     # Traverse the ancestors of type1
     for parent in parents1:
         # If an ancestor of type1 is also an ancestor of type2, it's the LCA
         if parent in parents2:
             return parent
-    
     # If no common ancestor is found, return the topmost ancestor (e.g., Object)
     return "Object"
 
@@ -587,11 +589,13 @@ def main():
         if cl.Name.str == type:
             while cl.Inherits:
                 # Get the parent class of the current type
-                parents.append(cl.Inherits)
+                parents.append(cl.Inherits.str)
                 for cl2 in ast:
-                    if cl.Inherits and cl2.Name.str == cl.Inherits.str:
+                    if cl2.Name.str != cl.Inherits.str:
+                        continue
+                    else:
                         cl = cl2
-                return parents
+                    break
             return parents
     return parents
   
@@ -601,7 +605,7 @@ def main():
 
     if isinstance(exp.ekind, Integer):
         return "Int", O, Expression(exp.loc, exp.ekind, "Int")
-
+        
     elif isinstance(exp.ekind, Plus):
         left_type, O, left_exp = type_check_exp(O, M, C, exp.ekind.Left)
         right_type, O, right_exp = type_check_exp(O, M, C, exp.ekind.Right)
@@ -701,21 +705,24 @@ def main():
         # Return the type "Object" (as while loops in Cool always return Object), updated environment, and new expression
         return "Object", O_body, Expression(exp.loc, While(predicate_exp, body_exp), "Object")
     elif isinstance(exp.ekind, Block):
-        #NEED to FIX this 
-        block_type = "Object"
+        final_type = exp.Type
         expressions = []
         for expression in exp.ekind.Expressions:
             expression_type, O, expression_exp = type_check_exp(O, M, C, expression)
             block_type = expression_type
+            final_type = find_least_common_ancestor(block_type, final_type)
             expressions.append(expression_exp)
         return block_type, O, Expression(exp.loc, Block(expressions), block_type)
 
     elif isinstance(exp.ekind, New):
+        if exp.ekind.Identifier.str =="SELF_TYPE":
+            return C.Name.str , O, Expression(exp.loc, New(exp.ekind.Identifier), C.Name.str)
         if exp.ekind.Identifier.str not in all_classes:
             print(f"ERROR: {exp.ekind.Identifier.loc}: Type-Check: Undefined type {exp.ekind.Identifier.str}")
             exit(1)
-        return exp.ekind.Identifier.str, O, Expression(exp.loc, exp.ekind, exp.ekind.Identifier.str)
-
+        return exp.ekind.Identifier.str, O, Expression(exp.loc, New(exp.ekind.Identifier), exp.ekind.Identifier.str)
+    elif isinstance(exp.ekind, CaseBranch):
+        
     elif isinstance(exp.ekind, ID):
         if exp.ekind.str == "self":
             return "SELF_TYPE", O, Expression(exp.loc, exp.ekind, "SELF_TYPE")
@@ -750,25 +757,32 @@ def main():
                 print(f"ERROR: {arg.loc}: Type-Check: Method {exp.MethodName.str} called with wrong argument type")
                 exit(1)
             new_args.append(new_arg_expression)
+        # if method_return_type == "SELF_TYPE":
+        #     method_return_type = "Object"
         updated_expression = SelfDispatch(exp.ekind.MethodName, new_args)
         return method_return_type, O, Expression(exp.loc, updated_expression, method_return_type)
     elif isinstance(exp.ekind, Let):
         new_O = O.copy()
+        bindings = []
+        final_type = None
         for binding in exp.ekind.Bindings:
             # Add the binding to O
             new_O[binding.Name.str] = binding.Type.str
+            final_type = find_least_common_ancestor(binding.Type.str, final_type)
             # Perform type checking for the initializer if present
             if binding.Initializer:
-                initializer_type, O , build_Int = type_check_exp(O, M, C, binding.Initializer)
+                initializer_type, O , new_initializer = type_check_exp(O, M, C, binding.Initializer)
                 # Check if the initializer type matches the declared type
                 if initializer_type != binding.Type.str:
                     # Raise an error if types do not match
-                    print("BINFING ERROR\n")
+                    print("BINDING ERROR\n")
                     exit(1)
-                # type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
-                # return type, new_O, Expression(exp.loc, Let(build_Int, expression), type)
+                binding = Binding(binding.Name, binding.Type, new_initializer)
+            bindings.append(binding)
         type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
-        return type, new_O, Expression(exp.loc, Let(exp.ekind.Bindings, expression), type)
+        # if type == "SELF_TYPE":
+        #     type = C.Name.str
+        return final_type, new_O, Expression(exp.loc, Let(bindings, expression), final_type)
     elif isinstance(exp.ekind, TrueConstant):
         # Return the type "Bool", the original environment, and the new expression
         return "Bool", O, Expression(exp.loc, TrueConstant(), "Bool")
@@ -814,6 +828,8 @@ def main():
             print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {object_type}")
             exit(1)
         method_formals, method_return_type = M[object_type][exp.ekind.MethodName.str]
+        if method_return_type =="SELF_TYPE":
+            method_return_type = object_type
         new_args_list = []
         O_arg = O_obj.copy()
         for arg in exp.ekind.ArgsList:
@@ -822,7 +838,7 @@ def main():
         new_expr = Expression(exp.loc, DynamicDispatch(Expression(object_expr.loc, object_expr.ekind, object_type),
                                 exp.ekind.MethodName,
                                 new_args_list), method_return_type)
-        return method_return_type, O_arg, new_expr
+        return method_return_type, O, new_expr
     elif isinstance(exp.ekind, LessThanOrEqual):
         left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
         right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
@@ -834,9 +850,9 @@ def main():
         return "Bool", O_right, new_expr
     elif isinstance(exp.ekind, Equal):
         left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
-        right_type, O_right, right_expr = type_check_exp(O_left.copy(), M, C, exp.ekind.Right)
+        right_type, O_right, right_expr = type_check_exp(O, M, C, exp.ekind.Right)
         if left_type != right_type:
-            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types")
+            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types {left_type}, {right_type}, {exp}")
             exit(1)
         new_expr = Expression(exp.loc,Equal(Expression(left_expr.loc, left_expr.ekind, left_type),
                         Expression(right_expr.loc, right_expr.ekind, right_type)), "Bool")
@@ -845,6 +861,8 @@ def main():
         # Return the type "Bool", the original environment, and the new expression
         return "Bool", O, Expression(exp.loc, FalseConstant(), "Bool")
     elif isinstance(exp.ekind, Case):
+        print( "CASE \n")
+        print(exp)
         # Type check the expression being matched
         case_type, _, case_exp = type_check_exp(O, M, C, exp.ekind.Expression)
         if case_type == "SELF_TYPE":
@@ -854,7 +872,7 @@ def main():
             exit(1)
         
         lowest_branch_type = None  # List to store the types of case branches
-        
+        branches = []
         # Iterate through case branches
         for branch in exp.ekind.Elements:
             new_O = O.copy()  # Create a new environment for each branch
@@ -865,7 +883,7 @@ def main():
             
             # Type check the branch body
             branch_type, new_O, branch_exp = type_check_exp(new_O, M, C, branch[2])
-            
+            branches.append(branch_exp)
             # Add the branch type to the list
             lowest_branch_type = find_least_common_ancestor(branch_type, lowest_branch_type )
         
@@ -875,9 +893,9 @@ def main():
             # exit(1)
         
         # The new expression will be the last expression in the case branch
-        new_exp = Expression(branch_exp.loc, branch_exp.ekind, lowest_branch_type)
+        new_exp = Expression(branch_exp.loc, Case(case_exp, branches), lowest_branch_type)
         
-        return case_type, new_O, new_exp 
+        return lowest_branch_type, new_O, new_exp 
     elif isinstance(exp.ekind, Assign):
         # Check if assigning to "self"
         if exp.ekind.Identifier.str == "self":
@@ -891,26 +909,29 @@ def main():
         
         # Get the type of the attribute from the environment
         identifier_type = O[exp.ekind.Identifier.str]
-        
         # Type check the assigned expression
         expression_type, O, new_exp = type_check_exp(O, M, C, exp.ekind.Expression)
-        
+        if expression_type == "SELF_TYPE":
+            expression_type == C.Name.str
         if identifier_type != expression_type:
+            print(f"NON SAME {identifier_type}, {expression_type}\n")
             identifier_type = find_least_common_ancestor(identifier_type, expression_type)
+            print(f"New Identifier type{identifier_type}")
         # Check if the assigned expression type matches the attribute type
         # if identifier_type != expression_type:
         #     print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
         #     exit(1)
-        
+        # print(identifier_type + "ID type \n")
+        # print(new_exp)
         # Return the type, updated environment, and new expression
-        return identifier_type, O, Expression(exp.loc, Assign(exp.ekind.Identifier, new_exp), expression_type)
+        return identifier_type, O, Expression(exp.loc, Assign(exp.ekind.Identifier, new_exp), identifier_type)
     elif isinstance(exp.ekind, StaticDispatch):
-        object_type = type_check_exp(O, M, C, exp.ekind.Object)
+        object_type, O, new_exp = type_check_exp(O, M, C, exp.ekind.Object)
         if object_type == "SELF_TYPE":
             object_type = C.Name.str
-        # if object_type not in all_classes:
-        #     print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
-        #     exit(1)
+        if object_type not in all_classes:
+            print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
+            exit(1)
         if exp.ekind.Type.str not in all_classes:
             print(f"ERROR: {exp.ekind.Type.loc}: Type-Check: Undefined type {exp.ekind.Type.str}")
             exit(1)
@@ -930,7 +951,10 @@ def main():
                 print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
                 exit(1)
             new_args.append(new_exp)
-        return method_return_type, O, Expression(exp.loc, StaticDispatch(exp.ekind.Object, exp.ekind.Type, exp.ekind.MethodName, new_args), method_return_type)
+        if method_return_type == "SELF_TYPE":
+            method_return_type = object_type
+        print( method_return_type + "METHOD RETURN TYPE \n")
+        return method_return_type, O, Expression(exp.loc, StaticDispatch(new_exp, exp.ekind.Type, exp.ekind.MethodName, new_args), method_return_type)
     else:
         print(f"UNKNOWN TYPE {exp} \n")
         return "", O, exp
@@ -940,6 +964,10 @@ def main():
     # Generates O to hold all instance variables in the class
     # O[name] = Type
     O = {}
+    if class_node.Inherits and class_node.Inherits.str != class_node.Name.str :
+        for cl in ast:
+            if cl.Name.str == class_node.Inherits.str:
+                O = generate_O(cl)
     for feature in class_node.Features:
         if isinstance(feature, Attribute):
             O[feature.Name.str] = feature.Type.str
@@ -1112,18 +1140,19 @@ def main():
         output_str += f"{len(exp[1].Bindings)}\n"
         for binding in exp.ekind.Bindings:
             if binding.Initializer:
-                output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
+                output_str += f"let_binding_init\n{binding.Name.loc}\n{binding.Name.str}\n{exp.loc}\n{binding.Type.str}\n{print_exp(binding.Initializer)}"
             else:
-                output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{binding.Type.str}\n"
+                output_str += f"let_binding_no_init\n{binding.Name.loc}\n{binding.Name.str}\n{exp.loc}\n{binding.Type.str}\n"
+        output_str += print_exp(exp.ekind.Expression)
         return output_str
     elif isinstance(exp[1], Case):
         output_str += "case\n"
         output_str += print_exp(exp[1].Expression)
         output_str += f"{len(exp[1].Elements)}\n"
+        print(exp[1].Elements)
         for element in exp[1].Elements:
-             output_str += f"{element[0].loc}\n{element[0].str}\n"
-             output_str += f"{element[1].loc}\n{element[1].str}\n"
-             output_str += print_exp(element[2])
+            output_str += print_exp(element)
+        
         return output_str
     elif isinstance(exp[1], Tilde):
         output_str += "tilde\n"
@@ -1174,7 +1203,7 @@ def main():
       output_str += "false\n"
       return output_str
     # else:
-        # print(f"UNKOWN TYPE printing {exp} \n")
+    #     print(f"UNKOWN TYPE printing {exp} \n")
 
     return output_str
 
@@ -1277,7 +1306,7 @@ def main():
               break
       # If class_obj is not found, skip this class
       if class_obj is None:
-          # print(f"Class {cls} not found in the AST")
+        #   print(f"Class {cls} not found in the AST")
           class_map += "0\n"
           continue
       s = print_attributes_str(class_obj, all_classes, ast)
@@ -1372,7 +1401,7 @@ def main():
             print_expression(exp[1].Expression)
             astString += (str(len(exp[1].Elements)) + "\n")
             for element in exp[1].Elements:
-                print_case_element(element)
+                print_expression(element)
         elif isinstance(exp[1], Tilde):
             astString += ("tilde\n")
             print_expression(exp[1].Expression)
@@ -1432,13 +1461,6 @@ def main():
           print_expression(attr.Initializer)
 
 
-  # This function prints a case element
-  def print_case_element(ast):
-      global astString
-      print_identifier(ast[0])
-      print_identifier(ast[1])
-      print_expression(ast[2])   
-
   # This function prints a feature, checking each feature type (attribute_no_init, attribute_init, method)
   def print_feature(feature):
       global astString
@@ -1458,7 +1480,7 @@ def main():
             astString += (str(len(feature.Formals)) + "\n")
             # use print list
             print_list(feature.Formals, print_formal)
-            print_identifier(feature.ReturnType)
+            astString += feature.Name.loc + "\n" + feature.ReturnType.str +"\n"
             print_expression(feature.Body)
     #   else:
 
@@ -1487,22 +1509,41 @@ def main():
             print_element_function(element)
 
   # This function prints a class whether it inherits or not
-  def print_class(cls):
+  def print_classes(ast):
       global astString
-    #   print("CLASS NAME: " + cls.Name.str)
-      if cls.Name.str != "IO" and cls.Name.str != "Object":
-        if cls.Inherits:
-                print_identifier(cls.Name)
-                astString += ("inherits\n")
-                print_identifier(cls.Inherits)
-                print_list(cls.Features, print_feature)
-        else:
-                print_identifier(cls.Name)
-                print_list(cls.Features, print_feature)
+      count = 0
+      for cls in ast:
+          if cls.Name.str != "Object" and cls.Name.str != "IO":
+              count += 1
+      astString += (str(count) + "\n")
+    #   for cl in user_classes:
+    #       for cls in ast:
+    #           if cls.Name.str == cl:
+    #             #   print("CLASS NAME: " + cls.Name.str)
+    #             if cls.Name.str != "IO" and cls.Name.str != "Object":
+    #                 if cls.Inherits:
+    #                         print_identifier(cls.Name)
+    #                         astString += ("inherits\n")
+    #                         print_identifier(cls.Inherits)
+    #                         print_list(cls.Features, print_feature)
+    #                 else:
+    #                         print_identifier(cls.Name)
+    #                         print_list(cls.Features, print_feature)
+      for cls in ast:
+              
+        if cls.Name.str != "IO" and cls.Name.str != "Object":
+            if cls.Inherits:
+                    print_identifier(cls.Name)
+                    astString += ("inherits\n")
+                    print_identifier(cls.Inherits)
+                    print_list(cls.Features, print_feature)
+            else:
+                    print_identifier(cls.Name)
+                    print_list(cls.Features, print_feature)
 
 
   def print_program(ast):
-      print_list(ast, print_class)
+      print_classes(ast)
     
   print_program(ast)
 
