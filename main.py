@@ -1061,6 +1061,7 @@ def main():
   # Update ast
   ast = check_method_expressions(ast)
 
+  # This is the main output function for the implementation map output
   def print_exp(exp):
     output_str = ""
     output_str += f"{exp[0]}\n"
@@ -1113,15 +1114,12 @@ def main():
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], Negate):
-        # print("NEGATE FOUNDDDD" + exp.loc)
         output_str += "negate\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], If):
         output_str += "if\n"
         output_str += print_exp(exp[1].Predicate)
-        # print("THEN BLOCK")
-        # print(exp[1].Then)
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
         return output_str
@@ -1213,12 +1211,10 @@ def main():
         output_str += f"{exp.ekind.Identifier.loc}\n"
         output_str += f"{exp.ekind.Type.str}\n"
         output_str += print_exp(exp.ekind.Expression)
-    # else:
-    #     print(f"UNKOWN TYPE printing {exp} \n")
 
     return output_str
 
-  
+  # This function prints the attributes of a class in the order they are defined/inherited
   def print_attributes_str(class_obj, all_classes, ast):
     output_string = ""
     # Add inherited attributes first
@@ -1227,6 +1223,7 @@ def main():
         if parent_class:
             output_string += print_attributes_str(parent_class, all_classes, ast)
 
+    # Add the attributes of the current class
     for feature in class_obj.Features:
         if isinstance(feature, Attribute):
             global attr_count
@@ -1237,8 +1234,9 @@ def main():
                 output_string += f"no_initializer\n{feature.Name.str}\n{feature.Type.str}\n"
     return output_string
   
-  
+  # This function builds the implementation map
   def build_imp_map():
+    # Hard codes the implementation map for the basic classes
     im = {}
     im['IO'] = IMObject("IO", 7, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nin_int\n0\nIO\n0\nInt\ninternal\nIO.in_int\nin_string\n0\nIO\n0\nString\ninternal\nIO.in_string\nout_int\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_int\nout_string\n1\nx\nIO\n0\nSELF_TYPE\ninternal\nIO.out_string\n"])
     im['Object'] = IMObject("Object", 3,  ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
@@ -1246,7 +1244,8 @@ def main():
     im['Bool'] = IMObject("Bool", 3, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
     im['String'] = IMObject("String", 6, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\nconcat\n1\ns\nString\n0\nString\ninternal\nString.concat\nlength\n0\nString\n0\nInt\ninternal\nString.length\nsubstr\n2\ni\nl\nString\n0\nString\ninternal\nString.substr\n"])
     im['Int'] = IMObject("Int", 3, ["abort\n0\nObject\n0\nObject\ninternal\nObject.abort\ncopy\n0\nObject\n0\nSELF_TYPE\ninternal\nObject.copy\ntype_name\n0\nObject\n0\nString\ninternal\nObject.type_name\n"])
-    #im [class name] = [number of methods (including inheritance)][methods in order of printing(order is inheritance first, ordered by appearance)]
+    
+    # Build the implementation map for the user-defined classes
     for c in user_classes:
       count = 0
       methods=[]
@@ -1259,10 +1258,8 @@ def main():
             if cl.Name.str == c:
                 class_obj = cl
                 break
-        # print(class_obj.Name.str)
         
         for feature in class_obj.Features:
-            # print(cl.Name.str + feature.Name.str)
             if isinstance(feature, Method):
                 output_string = ""
                 count += 1
@@ -1275,11 +1272,9 @@ def main():
         if class_obj.Inherits:
             methods = []
             for method in im[class_obj.Inherits.str].Methods:
-                overwritten =False
+                overwritten = False
                 for i in range(len(new_features)):
-                    #something to fix... 
                     if method.startswith(new_features[i]+"\n"):
-                        # print(f"{new_features[i]} is being overwritten by {method[:10]}")
                         overwritten = True
                         overwritten_methods.append(new_methods[i])
                         new_methods.pop(i)
@@ -1295,8 +1290,6 @@ def main():
             methods = im["Object"].Methods.copy()
             methods += new_methods
         im[class_obj.Name.str] = IMObject(class_obj.Name.str, count, methods)
-        # print(f"\n\n\nCLASS NAME{class_obj.Name}")
-        # print(methods)
     return im
   
   def print_formals(formals):
@@ -1314,25 +1307,13 @@ def main():
           implementation_map += im[cls].Name + "\n" + str(im[cls].NumMethods) + "\n"
           for method in im[cls].Methods:
               implementation_map += method
-
-          # class_obj = None
-          # for c in ast:
-          #     if c.Name.str == cls:
-          #         class_obj = c
-          #         break
-          
-          # if class_obj is None:
-          #     implementation_map += ""  # Skip processing this class
-          # else:
-          #     # implementation_map += print_attributes_str(class_obj, all_classes, ast)
               
       return implementation_map 
 
-# Class Map
+# Class Map code begins here
   class_map = "class_map\n"
   # sort classes alphabetically
   sorted_classes = sorted(all_classes)
-#   print(sorted_classes)
   class_map += str(len(sorted_classes)) + "\n"
   for cls in sorted_classes:
       global attr_count
@@ -1345,7 +1326,6 @@ def main():
               break
       # If class_obj is not found, skip this class
       if class_obj is None:
-        #   print(f"Class {cls} not found in the AST")
           class_map += "0\n"
           continue
       s = print_attributes_str(class_obj, all_classes, ast)
@@ -1353,7 +1333,7 @@ def main():
   
   implementation_map = print_implementation_map()
 
-  # ANNOTATED AST CODE STARTS HERE
+  # Annotated AST code begins here
 
   global astString
   astString = ""
@@ -1374,7 +1354,6 @@ def main():
             astString += exp.Type + "\n"
         else :
             astString += "NONE VERY BAD\n"
-
         if isinstance(exp[1], Integer):
             astString += ("integer\n")
             astString += (exp[1].Integer + "\n")
@@ -1484,9 +1463,6 @@ def main():
             astString += f"{exp.ekind.Identifier.loc}\n"
             astString += f"{exp.ekind.Type.str}\n"
             print_expression(exp.ekind.Expression)
-        # else:
-        #     print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
-
        
 
   # This function prints a binding either let_binding_no_init or let_binding_init
@@ -1551,27 +1527,17 @@ def main():
       for element in ast:
             print_element_function(element)
 
-  # This function prints a class whether it inherits or not
+  # This function prints the entier annotated AST
   def print_classes(ast):
       global astString
       count = 0
       for cls in ast:
           if cls.Name.str != "Object" and cls.Name.str != "IO":
               count += 1
+    #num classes
       astString += (str(count) + "\n")
-    #   for cl in user_classes:
-    #       for cls in ast:
-    #           if cls.Name.str == cl:
-    #             #   print("CLASS NAME: " + cls.Name.str)
-    #             if cls.Name.str != "IO" and cls.Name.str != "Object":
-    #                 if cls.Inherits:
-    #                         print_identifier(cls.Name)
-    #                         astString += ("inherits\n")
-    #                         print_identifier(cls.Inherits)
-    #                         print_list(cls.Features, print_feature)
-    #                 else:
-    #                         print_identifier(cls.Name)
-    #                         print_list(cls.Features, print_feature)
+
+    #prints each class in the AST
       for cls in ast:
               
         if cls.Name.str != "IO" and cls.Name.str != "Object":
@@ -1585,14 +1551,13 @@ def main():
                     astString += ("no_inherits\n")
                     print_list(cls.Features, print_feature)
 
-
-  def print_program(ast):
-      print_classes(ast)
-    
-  print_program(ast)
+    #Call the print_classes function to print the AST
+  print_classes(ast)
 
   # ANNOTATED AST CODE ENDS HERE
    
+
+   #Write the class_map, implementation_map, parent_map, and annotated AST to  out files
   with open(fname[:-4] + "-type", "w") as output_file:
       output_file.write(class_map + implementation_map + parentMapString + astString)
 
