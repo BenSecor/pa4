@@ -559,11 +559,6 @@ def main():
     for child, parent in sorted(parent_map.items()):
         result += child + "\n" + parent + "\n"
     return result
-    # print("parent_map\n")
-    # print(len(parent_map))
-    # for child, parent in sorted(parent_map.items()):
-    #   print(child)
-    #   print(parent)
 
   parentMapString = create_parent_map(parent_map)
 
@@ -779,8 +774,7 @@ def main():
                 initializer_type, O , new_initializer = type_check_exp(O, M, C, binding.Initializer)
                 # Check if the initializer type matches the declared type
                 if initializer_type != binding.Type.str:
-                    # Raise an error if types do not match
-                    print("BINDING ERROR\n")
+                    print(f"ERROR {binding.Initializer.loc}: Type-Check: {binding.Type.str} does not conform to {initializer_type} ")
                     exit(1)
                 binding = Binding(binding.Name, binding.Type, new_initializer)
             bindings.append(binding)
@@ -857,7 +851,7 @@ def main():
         left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
         right_type, O_right, right_expr = type_check_exp(O, M, C, exp.ekind.Right)
         if left_type != right_type:
-            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types {left_type}, {right_type}, {exp}")
+            print(f"ERROR: {exp.loc}: Type-Check: Equal operation with different types {left_type}, {right_type}")
             exit(1)
         new_expr = Expression(exp.loc,Equal(Expression(left_expr.loc, left_expr.ekind, left_type),
                         Expression(right_expr.loc, right_expr.ekind, right_type)), "Bool")
@@ -1026,6 +1020,11 @@ def main():
         for feature in cl.Features:
             if isinstance(feature, Attribute) and feature.Initializer:
                 expression_type, _, exp = type_check_exp(O, M, cl, feature.Initializer)
+                if expression_type != feature.Type.str:
+                    least_type = find_least_common_ancestor(feature.Type.str, expression_type)
+                    if least_type != feature.Type.str:
+                        print(f"ERROR: {exp.loc}: Type-Check: {feature.Type} does not conform to {expression_type}")
+                        exit(1)
                 new_feature = Attribute(feature.Name, feature.Type, exp)
                 new_features.append(new_feature)
             elif isinstance(feature, Method):
