@@ -83,6 +83,7 @@ def main():
     name = read ()
     return ID(loc, name) 
 
+    #read thhe cool class
   def read_cool_class ():
     cname = read_id () 
     i = read()
@@ -90,11 +91,12 @@ def main():
       inherits = None 
     elif i == "inherits": 
       inherits = read_id()
-    else:
-      raise(Exception(f"read_cool_class: inherits {i}"))
+    # else:
+    #   raise(Exception(f"read_cool_class: inherits {i}"))
     features = read_list(read_feature)
     return CoolClass(cname, inherits, features) 
 
+    #feature is either attribute or method and where it has intitializers
   def read_feature (): 
     a = read()
     if a == "attribute_no_init":
@@ -112,8 +114,8 @@ def main():
       mtype = read_id()
       mbody = read_exp()
       return Method(mname, formals, mtype, mbody)
-    else:
-      raise(Exception(f"read_feature {a}"))
+    # else:
+    #   raise(Exception(f"read_feature {a}"))
 
   def read_formal ():
     fname = read_id()
@@ -131,27 +133,31 @@ def main():
         typex = read_id()
         init = read_exp()
         return Binding(name, typex, init)
-    else:
-        raise Exception(f"Unknown binding kind: {b}")
+    # else:
+    #     raise Exception(f"Unknown binding kind: {b}")
   # An expression starts with its location (line number) 
   # and then has a "kind" (like Plus or While). 
   def read_exp ():
     eloc = read() 
     ekind = read_ekind ()
     return Expression(eloc, ekind, None) 
-
+    #reads a branch of a case expression o
   def read_case_exp():
     var = read_id()
     type_id = read_id()
     body_exp = read_exp()
+    #since this method is caled by list, and we want to use tthe
+    # type check exp later with this we are returning type expression 
+    # with ekind = CaseBranch
     return Expression(var.loc, CaseBranch(var, type_id, body_exp), None)
   
-  
+  #read assign
   def read_assign():
     identifier = read_id()
     expression = read_exp()
     return Assign(identifier, expression)
-
+  
+    #read expression
   def read_ekind():
     ekind = read()
     if ekind == "integer":
@@ -252,9 +258,10 @@ def main():
     else:
         raise(Exception(f"Unhandled expression kind: {ekind}"))
 
+    #creates the entire AST 
   ast = read_cool_program () 
-  # Create namedtuple objects for base classes
 
+    #contrsuts a method map for non exp type checking
   def construct_method_map():
     method_map = {}
     for cl in ast:
@@ -271,7 +278,7 @@ def main():
     return method_map
   
   M =  construct_method_map()
-
+    #hardcoded classes for the ast so that other classes can acess object and IO
   IO = CoolClass(ID("0", "IO"), ID("0", "Object"), 
                  [Method(ID("0", "out_string"), [Formal(ID("0", "x"), "String")], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))),
                     Method(ID("0", "out_int"), [Formal(ID("0", "x"), "Int")], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant(""))), 
@@ -285,10 +292,10 @@ def main():
                         Method(ID("0", "type_name"), [], ID("0", "String"), Expression("0", "String", StringConstant(""))),
                         Method(ID("0", "copy"), [], ID("0", "SELF_TYPE"), Expression("0", "String", StringConstant("")))])
 
-  ast2 = ast
   # Add base classes to ast
   ast.extend([IO, Object])
 
+    #use topsort to check for inheritance using dfs
   def topological_sort(classes):
     graph = {cls.Name.str: set() for cls in classes}
     for cls in classes:
@@ -312,19 +319,21 @@ def main():
     result.reverse()  # Reverse the result to get the correct order
     return result
   
+  #defin differrtent sets of classes we can use later
+
   base_classes = [ "Int", "String", "Bool"]
   all_classes = ([c.Name.str for c in ast ] + base_classes)
-  #print(f"DEBUG: all_classes = {all_classes}") 
-  # print(f"DEBUG: ast = {ast}") 
 
   # Look for inheritance from Int, String and undeclared classes 
   for c in ast:
     if c.Inherits != None: 
       i = c.Inherits 
       if i.str in [ "Int", "String", "Bool" ]:
+        #cannot inherit from Int, String, or Bool
         print(f"ERROR: {i.loc}: Type-Check: inheriting from forbidden class {i.str}")
         exit(1)
-      elif not i[1] in all_classes:
+      elif i.str not in all_classes:
+        #if i.str is not in all classes throw an error
         print(f"ERROR: {i.loc}: Type-Check: inheriting from undefined class {i.str}")
         exit(1)
 
@@ -367,10 +376,12 @@ def main():
         print(f"ERROR: 0: Type-Check: inheritance cycle: {cls}") 
         exit(1) 
 
+    #create user classes of all the classes topsorted
   user_classes = topological_sort(ast)
-  base_classes.reverse()  # Reverse the base classes to get the correct order
+  base_classes.reverse()  # Reverse the base classes to get the correct order of the base classes
   all_classes = (base_classes + user_classes)
 
+    # go through classes and preform typecheck check to make surte attributes and methods are not redefined in classes 
   for cls in ast:
     attributes = set()
     methods = set()
@@ -416,10 +427,6 @@ def main():
                           if formal_child[1].str != formal_parent[1].str:
                               print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different parameter types")
                               exit(1)
-                # if feature.Formals != parent_feature.Formals:
-                #                   print(str(feature.Formals) + "\n" + str(parent_feature.Formals) + "\n")
-                #                   print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different parameters")
-                #                   exit(1)
 
   check_method_redefinition()
 
@@ -430,17 +437,18 @@ def main():
         if cls.Name.str == "Main":
             main_class = cls
             break
-
+    
     if not main_class:
         print("ERROR: 0: Type-Check: class Main not found")
         exit(1)
 
     main_method_found = False
     for feature in main_class.Features:
+        #check that main is a method, this is one of our test cases from pa4t, we had an attribute called main
         if feature.Name.str == "main" and isinstance(feature, Method):
             main_method_found = True
             break
-
+    #if no maine we throw an error
     if not main_method_found:
         print("ERROR: 0: Type-Check: class Main method main not found")
         exit(1)
@@ -457,7 +465,7 @@ def main():
                       if formal.Type == "SELF_TYPE":
                           print(f"ERROR: {formal.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
                           exit(1)
-
+    #check duplicate_attributes
   def check_duplicate_attributes():
       for cls in ast:
           attributes = set()
@@ -727,7 +735,7 @@ def main():
         if exp.ekind.str == "self":
             return "SELF_TYPE", O, Expression(exp.loc, exp.ekind, "SELF_TYPE")
         if exp.ekind.str not in O:
-            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.ekind.str} {exp}")
+            print(f"ERROR: {exp.ekind.loc}: Type-Check: Undefined attribute {exp.ekind.str}")
             exit(1)
         return O[exp.ekind.str], O, Expression(exp.loc, exp.ekind, O[exp.ekind.str])
 
@@ -749,16 +757,16 @@ def main():
             print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
             exit(1)
         new_args = []
+        least_type = ""
         for arg, formal in zip(exp.ekind.ArgsList, method_formals):
             arg_type, O, new_arg_expression = type_check_exp(O, M, C, arg)
             if arg_type == "SELF_TYPE":
                 arg_type = C.Name.str
-            if arg_type != formal[1]:
-                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.MethodName.str} called with wrong argument type")
+            least_type = find_least_common_ancestor(arg_type, formal[1])
+            if least_type != formal[1]:
+                print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
                 exit(1)
             new_args.append(new_arg_expression)
-        # if method_return_type == "SELF_TYPE":
-        #     method_return_type = "Object"
         updated_expression = SelfDispatch(exp.ekind.MethodName, new_args)
         return method_return_type, O, Expression(exp.loc, updated_expression, method_return_type)
     elif isinstance(exp.ekind, Let):
@@ -932,11 +940,13 @@ def main():
             print(f"ERROR: {exp.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong number of arguments")
             exit(1)
         new_args = []
+        least_type = ""
         for arg, formal in zip(exp.ekind.ArgsList, method_formals):
             arg_type, O, new_exp = type_check_exp(O, M, C, arg)
             if arg_type == "SELF_TYPE":
                 arg_type = C.Name.str
-            if arg_type != formal[1]:
+            least_type = find_least_common_ancestor(arg_type, formal[1])
+            if least_type != formal[1]:
                 print(f"ERROR: {arg.loc}: Type-Check: Method {exp.ekind.MethodName.str} called with wrong argument type")
                 exit(1)
             new_args.append(new_exp)
@@ -976,15 +986,27 @@ def main():
             "out_string": ([(None, "String")], "SELF_TYPE"),
             "out_int": ([(None, "Int")], "SELF_TYPE"),
             "in_string": ([], "String"),
-            "in_int": ([], "Int")
+            "in_int": ([], "Int"),
+            "abort": ([], "Object"),
+            "type_name": ([], "String"),
+            "copy": ([], "SELF_TYPE")
         },
         "String": {
             "length": ([], "Int"),
             "concat": ([(None, "String")], "String"),
-            "substr": ([(None, "Int"), (None, "Int")], "String")
+            "substr": ([(None, "Int"), (None, "Int")], "String"),
+            "abort": ([], "Object"),
+            "type_name": ([], "String"),
+            "copy": ([], "SELF_TYPE")
         },
-        "Bool": {},
-        "Int": {}
+        "Bool": {
+            "abort": ([], "Object"),
+            "type_name": ([], "String"),
+            "copy": ([], "SELF_TYPE")},
+        "Int": {
+            "abort": ([], "Object"),
+            "type_name": ([], "String"),
+            "copy": ([], "SELF_TYPE")}
     }
     for cl in user_classes:
         for class_node in ast:
@@ -1477,8 +1499,8 @@ def main():
             astString += f"{exp.ekind.Identifier.loc}\n"
             astString += f"{exp.ekind.Type.str}\n"
             print_expression(exp.ekind.Expression)
-        else:
-            print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
+        # else:
+        #     print(f"UNKOWN TYPE AST STUFF printing {exp} \n")
 
        
 
