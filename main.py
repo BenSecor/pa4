@@ -437,7 +437,7 @@ def main():
 
     main_method_found = False
     for feature in main_class.Features:
-        if feature.Name.str == "main":
+        if feature.Name.str == "main" and isinstance(feature, Method):
             main_method_found = True
             break
 
