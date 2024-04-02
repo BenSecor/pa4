@@ -93,9 +93,6 @@ def main():
     else:
       raise(Exception(f"read_cool_class: inherits {i}"))
     features = read_list(read_feature)
-    print(f"CLASS:{cname.str}")
-    for feature in features:
-        print(f"{feature.Name.str}")
     return CoolClass(cname, inherits, features) 
 
   def read_feature (): 
@@ -554,6 +551,8 @@ def main():
     for cls in ast:
       if cls.Inherits:
         parent_map[cls.Name.str] = cls.Inherits.str
+      elif cls.Name.str != "Object":
+        parent_map[cls.Name.str] = "Object"
     for cls2 in base_classes:
        parent_map[cls2] = "Object"
     result += str(len(parent_map)) + "\n"
@@ -715,7 +714,7 @@ def main():
             block_type = expression_type
             final_type = find_least_common_ancestor(block_type, final_type)
             expressions.append(expression_exp)
-        return block_type, O, Expression(exp.loc, Block(expressions), block_type)
+        return block_type, O, Expression(exp.loc, Block(expressions.copy()), block_type)
 
     elif isinstance(exp.ekind, New):
         if exp.ekind.Identifier.str =="SELF_TYPE":
@@ -788,7 +787,7 @@ def main():
         type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
         # if type == "SELF_TYPE":
         #     type = C.Name.str
-        return final_type, new_O, Expression(exp.loc, Let(bindings, expression), final_type)
+        return type, new_O, Expression(exp.loc, Let(bindings, expression), type)
     elif isinstance(exp.ekind, TrueConstant):
         # Return the type "Bool", the original environment, and the new expression
         return "Bool", O, Expression(exp.loc, TrueConstant(), "Bool")
@@ -841,7 +840,7 @@ def main():
         for arg in exp.ekind.ArgsList:
             arg_type, O_arg, arg_expr = type_check_exp(O_arg, M, C, arg)
             new_args_list.append(Expression(arg_expr.loc, arg_expr.ekind, arg_type))
-        new_expr = Expression(exp.loc, DynamicDispatch(Expression(object_expr.loc, object_expr.ekind, object_type),
+        new_expr = Expression(exp.loc, DynamicDispatch(object_expr,
                                 exp.ekind.MethodName,
                                 new_args_list), method_return_type)
         return method_return_type, O, new_expr
@@ -913,19 +912,16 @@ def main():
         if expression_type == "SELF_TYPE":
             expression_type == C.Name.str
         if identifier_type != expression_type:
-            print(f"NON SAME {identifier_type}, {expression_type}\n")
-            identifier_type = find_least_common_ancestor(identifier_type, expression_type)
-            print(f"New Identifier type{identifier_type}")
-        # Check if the assigned expression type matches the attribute type
-        # if identifier_type != expression_type:
-        #     print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
-        #     exit(1)
-        # print(identifier_type + "ID type \n")
-        # print(new_exp)
-        # Return the type, updated environment, and new expression
-        return identifier_type, O, Expression(exp.loc, Assign(exp.ekind.Identifier, new_exp), identifier_type)
+            least_type = find_least_common_ancestor(identifier_type, expression_type)
+            # print(f"{least_type} is a subclass of id {identifier_type} that the expression type {expression_type} is a sub")
+            # expression_type = least_type    
+            # Check if the assigned expression type is a subtype of the identifier type
+            if least_type != identifier_type:
+                print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
+                exit(1)
+        return expression_type, O, Expression(exp.loc, Assign(exp.ekind.Identifier, new_exp), expression_type)
     elif isinstance(exp.ekind, StaticDispatch):
-        object_type, O, new_exp = type_check_exp(O, M, C, exp.ekind.Object)
+        object_type, O, object_exp = type_check_exp(O, M, C, exp.ekind.Object)
         if object_type == "SELF_TYPE":
             object_type = C.Name.str
         if object_type not in all_classes:
@@ -953,7 +949,7 @@ def main():
         if method_return_type == "SELF_TYPE":
             method_return_type = object_type
         # print( method_return_type + "METHOD RETURN TYPE \n")
-        return method_return_type, O, Expression(exp.loc, StaticDispatch(new_exp, exp.ekind.Type, exp.ekind.MethodName, new_args), method_return_type)
+        return method_return_type, O, Expression(exp.loc, StaticDispatch(object_exp, exp.ekind.Type, exp.ekind.MethodName, new_args.copy()), method_return_type)
     else:
         # print(f"UNKNOWN TYPE {exp} \n")
         return "", O, exp
@@ -1061,8 +1057,8 @@ def main():
     if exp.Type:
         output_str += exp.Type +"\n"
     else:
-        print(exp)
-        output_str += "No EXP\n"
+        print(f"ERROR: {exp.loc}: Does not have a type ;")
+        exit(1)
     if isinstance(exp[1], Integer):
         output_str += "integer\n"
         output_str += f"{exp[1].Integer}\n"
@@ -1107,15 +1103,15 @@ def main():
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], Negate):
-        print("NEGATE FOUNDDDD" + exp.loc)
+        # print("NEGATE FOUNDDDD" + exp.loc)
         output_str += "negate\n"
         output_str += print_exp(exp[1].Expression)
         return output_str
     elif isinstance(exp[1], If):
         output_str += "if\n"
         output_str += print_exp(exp[1].Predicate)
-        print("THEN BLOCK")
-        print(exp[1].Then)
+        # print("THEN BLOCK")
+        # print(exp[1].Then)
         output_str += print_exp(exp[1].Then)
         output_str += print_exp(exp[1].Else)
         return output_str
@@ -1256,7 +1252,7 @@ def main():
         # print(class_obj.Name.str)
         
         for feature in class_obj.Features:
-            print(cl.Name.str + feature.Name.str)
+            # print(cl.Name.str + feature.Name.str)
             if isinstance(feature, Method):
                 output_string = ""
                 count += 1
@@ -1273,7 +1269,7 @@ def main():
                 for i in range(len(new_features)):
                     #something to fix... 
                     if method.startswith(new_features[i]+"\n"):
-                        print(f"{new_features[i]} is being overwritten by {method[:10]}")
+                        # print(f"{new_features[i]} is being overwritten by {method[:10]}")
                         overwritten = True
                         overwritten_methods.append(new_methods[i])
                         new_methods.pop(i)
@@ -1514,7 +1510,7 @@ def main():
       elif isinstance(feature, Method):
             astString += ("method\n")
             print_identifier(feature.Name)
-            astString += (str(len(feature.Formals)) + "\n")
+            # astString += (str(len(feature.Formals)) + "\n")
             # use print list
             print_list(feature.Formals, print_formal)
             astString += feature.Name.loc + "\n" + feature.ReturnType.str +"\n"
@@ -1528,6 +1524,7 @@ def main():
         global astString
         # print(formal)
         print_identifier(formal[0])
+        astString += formal[0].loc + "\n"
         astString += formal[1]+"\n"
 
 
@@ -1539,8 +1536,7 @@ def main():
           if cls.Name.str != "Object" and cls.Name.str != "IO":
               count += 1
     
-      if count > 0:
-          astString += (str(count) + "\n")
+      astString += (str(count) + "\n")
     
       for element in ast:
             print_element_function(element)
@@ -1576,6 +1572,7 @@ def main():
                     print_list(cls.Features, print_feature)
             else:
                     print_identifier(cls.Name)
+                    astString += ("no_inherits\n")
                     print_list(cls.Features, print_feature)
 
 
