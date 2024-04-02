@@ -774,7 +774,7 @@ def main():
                 initializer_type, O , new_initializer = type_check_exp(O, M, C, binding.Initializer)
                 # Check if the initializer type matches the declared type
                 if initializer_type != binding.Type.str:
-                    print(f"ERROR {binding.Initializer.loc}: Type-Check: {binding.Type.str} does not conform to {initializer_type} ")
+                    print(f"ERROR: {binding.Initializer.loc}: Type-Check: {binding.Type.str} does not conform to {initializer_type} ")
                     exit(1)
                 binding = Binding(binding.Name, binding.Type, new_initializer)
             bindings.append(binding)
@@ -1003,9 +1003,13 @@ def main():
                                 # print(formal)
                                 arg_types.append((formal.Name.str, formal.Type))
                         return_type = feature.ReturnType.str
+                        #check to make sure we aren't overriding a curren tmethod incorectly
+                        if method_name in class_methods:
+                            if class_methods[method_name] != (arg_types, return_type):
+                                print(f"ERROR: {feature.Name.loc}: Type-Check: Method {method_name} redefined with different signature")
+                                exit(1)
                         class_methods[method_name] = (arg_types, return_type)
                 M[class_node.Name.str] = class_methods
-    # print(M)
     return M
     
     
@@ -1023,7 +1027,7 @@ def main():
                 if expression_type != feature.Type.str:
                     least_type = find_least_common_ancestor(feature.Type.str, expression_type)
                     if least_type != feature.Type.str:
-                        print(f"ERROR: {exp.loc}: Type-Check: {feature.Type} does not conform to {expression_type}")
+                        print(f"ERROR: {exp.loc}: Type-Check: {feature.Type.str} does not conform to {expression_type}")
                         exit(1)
                 new_feature = Attribute(feature.Name, feature.Type, exp)
                 new_features.append(new_feature)
