@@ -465,7 +465,7 @@ def main():
                       if formal.Type == "SELF_TYPE":
                           print(f"ERROR: {formal.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} has a formal parameter of type 'SELF_TYPE'")
                           exit(1)
-    #check duplicate_attributes
+    # Check duplicate_attributes
   def check_duplicate_attributes():
       for cls in ast:
           attributes = set()
@@ -491,6 +491,7 @@ def main():
                   print(f"ERROR: {cls.Inherits.loc}: Type-Check: Undefined parent class {cls.Inherits.str}")
                   exit(1)
 
+              # Check for redefining attributes with the same name.
               for feature in parent_class.Features:
                   if isinstance(feature, Attribute):
                       for cls_feature in cls.Features:
@@ -526,7 +527,7 @@ def main():
                                             print(f"ERROR: {feature.Name.loc}: Type-Check: Method {feature.Name.str} in class {cls.Name.str} redefines parent method with different parameter types")
                                             exit(1)
 
-  # Check for undefined attribute types.
+  # Check for undefined attribute types
   def check_undefined_attribute_types():
       for cls in ast:
           for feature in cls.Features:
@@ -534,7 +535,7 @@ def main():
                   print(f"ERROR: {feature.Type.loc}: Type-Check: Undefined type {feature.Type.str} for attribute {feature.Name.str} in class {cls.Name.str}")
                   exit(1)
 
-  # Check for undefined parameter types in method definitions.
+  # Check for undefined parameter types in method definitions
   def check_undefined_parameter_types():
       for cls in ast:
           for feature in cls.Features:
@@ -545,15 +546,10 @@ def main():
                           print(f"ERROR: {formal.Name.loc}: Type-Check: Undefined type {formal.Type.str} for parameter {formal.Name.str} in method {feature.Name.str} of class {cls.Name.str}")
                           exit(1)
   
-  '''
-   Output "parent_map \n"
-   Then output the number of parent-child inheritance relations and then \n. This number is equal to the number of classes minus one (since Object has no parent).
-   Then output each child class in turn (in ascending alphabetical order):
-     - Output the name of the child class and then \n.
-     - Output the name of the child class's parent and then \n.
-  '''
+  # Here we begin creating the parent map
   parent_map = {}
 
+  # Create the parent map for use in the type-checking and later output
   def create_parent_map(parent_map):
     result = "parent_map\n"
     for cls in ast:
@@ -570,6 +566,7 @@ def main():
 
   parentMapString = create_parent_map(parent_map)
 
+  # Check for undefined return types in method definitions
   def find_least_common_ancestor(type1, type2):
     if type1 == None:
         return type2
@@ -582,14 +579,15 @@ def main():
         # If an ancestor of type1 is also an ancestor of type2, it's the LCA
         if parent in parents2:
             return parent
-    # If no common ancestor is found, return the topmost ancestor (e.g., Object)
+    # If no common ancestor is found, return the topmost ancestor
     return "Object"
 
+  # Get the inheritance hierarchy of a type
   def get_inheritances(type):
     parents = []
     # Add the type itself to the list of ancestors
     parents.append(type)
-    # Traverse the inheritance hierarchy upwards
+    # Traverse the inheritance hierarchy
     for cl in ast:
         if cl.Name.str == type:
             while cl.Inherits:
@@ -604,6 +602,7 @@ def main():
             return parents
     return parents
   
+  # This is the main type-checking function, which will be called on each expression in the AST
   def type_check_exp(O, M, C, exp):
     if exp == []:
         return "", O, exp
@@ -670,7 +669,6 @@ def main():
             if initializer_type != attribute_type:
                 print(f"ERROR: {exp.ekind.Initializer.loc}: Type-Check: Attribute {exp.Name.str} has wrong type")
                 exit(1)
-        # print(f"\nassigned {exp.ekind.Name.str} = {exp.ekind.Type.str}\n")
         O[exp.ekind.Name.str] = exp.ekind.Type.str
         exp = Expression(exp.loc,  Attribute(exp.ekind.Name, attribute_type, initializer_exp), attribute_type)
         return attribute_type, O, exp
@@ -707,7 +705,6 @@ def main():
         # Type check the body expression
         body_type, O_body, body_exp = type_check_exp(O_predicate, M, C, exp.ekind.Body)
         
-        # Return the type "Object" (as while loops in Cool always return Object), updated environment, and new expression
         return "Object", O_body, Expression(exp.loc, While(predicate_exp, body_exp), "Object")
     elif isinstance(exp.ekind, Block):
         final_type = exp.Type
@@ -787,8 +784,6 @@ def main():
                 binding = Binding(binding.Name, binding.Type, new_initializer)
             bindings.append(binding)
         type, new_O, expression = type_check_exp(new_O, M, C, exp.ekind.Expression)
-        # if type == "SELF_TYPE":
-        #     type = C.Name.str
         return type, new_O, Expression(exp.loc, Let(bindings, expression), type)
     elif isinstance(exp.ekind, TrueConstant):
         # Return the type "Bool", the original environment, and the new expression
@@ -813,7 +808,6 @@ def main():
         new_expr = If(pred_expr,
                     then_expr,
                     else_expr)
-        # print(f"IF TYPES, {new_type}, {then_type}, {else_type} \n")
         return new_type, O, Expression(exp.loc, new_expr, new_type)
     elif isinstance(exp.ekind, LessThan):
         left_type, O_left, left_expr = type_check_exp(O, M, C, exp.ekind.Left)
@@ -830,7 +824,7 @@ def main():
             object_type = C.Name.str
         if object_type not in all_classes:
             print(f"ERROR: {exp.ekind.Object.loc}: Type-Check: Undefined type {object_type}")
-            # exit(1)
+            exit(1)
         if exp.ekind.MethodName.str not in M[object_type]:
             print(f"ERROR: {exp.ekind.MethodName.loc}: Type-Check: Undefined method {exp.ekind.MethodName.str} in class {object_type}")
             exit(1)
@@ -887,11 +881,6 @@ def main():
             # Add the branch type to the list
             lowest_branch_type = find_least_common_ancestor(branch_type, lowest_branch_type )
         
-        # Check if all branch types are consistent
-        # if len(set(branch_types)) > 1:
-            # print(f"ERROR: {exp.loc}: Type-Check: Case branches have different types")
-            # exit(1)
-        
         # The new expression will be the last expression in the case branch
         new_exp = Expression(exp.loc, Case(case_exp, branches), lowest_branch_type)
         
@@ -914,9 +903,7 @@ def main():
         if expression_type == "SELF_TYPE":
             expression_type == C.Name.str
         if identifier_type != expression_type:
-            least_type = find_least_common_ancestor(identifier_type, expression_type)
-            # print(f"{least_type} is a subclass of id {identifier_type} that the expression type {expression_type} is a sub")
-            # expression_type = least_type    
+            least_type = find_least_common_ancestor(identifier_type, expression_type)  
             # Check if the assigned expression type is a subtype of the identifier type
             if least_type != identifier_type:
                 print(f"ERROR: {exp.loc}: Type-Check: Assigning expression of type {expression_type} to attribute of type {identifier_type}")
@@ -952,16 +939,13 @@ def main():
             new_args.append(new_exp)
         if method_return_type == "SELF_TYPE":
             method_return_type = object_type
-        # print( method_return_type + "METHOD RETURN TYPE \n")
         return method_return_type, O, Expression(exp.loc, StaticDispatch(object_exp, exp.ekind.Type, exp.ekind.MethodName, new_args.copy()), method_return_type)
     else:
-        # print(f"UNKNOWN TYPE {exp} \n")
         return "", O, exp
 
 
   def generate_O(class_node):
     # Generates O to hold all instance variables in the class
-    # O[name] = Type
     O = {}
     if class_node.Inherits and class_node.Inherits.str != class_node.Name.str :
         for cl in ast:
@@ -970,7 +954,6 @@ def main():
     for feature in class_node.Features:
         if isinstance(feature, Attribute):
             O[feature.Name.str] = feature.Type.str
-    # print(O)
     return O
 
   def generate_M(ast):
@@ -1008,6 +991,7 @@ def main():
             "type_name": ([], "String"),
             "copy": ([], "SELF_TYPE")}
     }
+    # Add the classes to the M dictionary
     for cl in user_classes:
         for class_node in ast:
             if class_node.Name.str == cl:
@@ -1022,10 +1006,9 @@ def main():
                         method_name = feature.Name.str
                         for formal in feature.Formals:
                             if formal != []:
-                                # print(formal)
                                 arg_types.append((formal.Name.str, formal.Type))
                         return_type = feature.ReturnType.str
-                        #check to make sure we aren't overriding a curren tmethod incorectly
+                        # Check to make sure we aren't overriding a current method incorectly
                         if method_name in class_methods:
                             if class_methods[method_name] != (arg_types, return_type):
                                 print(f"ERROR: {feature.Name.loc}: Type-Check: Method {method_name} redefined with different signature")
@@ -1035,7 +1018,7 @@ def main():
     return M
     
     
-  
+  # Check the method expressions for type errors and return the new AST which contains the type-checked expressions and their types
   def check_method_expressions(ast):
     M = generate_M(ast)
     new_ast = []
@@ -1066,6 +1049,7 @@ def main():
         new_cl = CoolClass(cl.Name, cl.Inherits, new_features)
         new_ast.append(new_cl)
     return new_ast
+  
   #Add checks for negative test cases
   check_self_and_self_type()
   check_duplicate_attributes()
@@ -1073,8 +1057,9 @@ def main():
   check_method_parameter_redefinition()
   check_undefined_attribute_types()
   check_undefined_parameter_types()
-  new_ast = check_method_expressions(ast)
-  ast = new_ast
+
+  # Update ast
+  ast = check_method_expressions(ast)
 
   def print_exp(exp):
     output_str = ""
